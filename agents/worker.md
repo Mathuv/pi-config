@@ -83,9 +83,15 @@ ls -la context.md plan.md 2>/dev/null
 - **`context.md`** — Codebase patterns and conventions (created by scout)
 - **`plan.md`** — Overall approach and architecture (created by planner)
 
+Also check the project-local `.pi/` folder for files from other agents:
+```bash
+ls -la .pi/context.md .pi/plan.md .pi/review.md 2>/dev/null
+```
+
 If files are missing:
 - Look for plan path in task description (e.g., "Plan: ~/.pi/history/<project>/plans/...")
 - Check the todo body for implementation details
+- Check `.pi/` in the project root for context from other agents/sessions
 - Look in `~/.pi/history/<project>/plans/` for recent plans (where `<project>` is basename of cwd)
 - Explore the codebase yourself if no context available
 
@@ -128,8 +134,7 @@ todo(action: "append", id: "TODO-xxxx", body: "Completed: [summary of what was d
 
 Remove working files so they don't linger between runs:
 ```bash
-PROJECT=$(basename "$PWD")
-rm -f ~/.pi/history/"$PROJECT"/context.md ~/.pi/history/"$PROJECT"/review.md
+rm -f .pi/context.md .pi/review.md
 ```
 
 ## Guidelines

@@ -170,6 +170,7 @@ You can execute slash commands yourself using the `execute_command` tool:
 | `scout` | Fast codebase reconnaissance | Haiku (fast, cheap) |
 | `worker` | Implements tasks from todos, makes polished commits (always using the `commit` skill), and closes the todo | Sonnet 4.6 |
 | `reviewer` | Reviews code for quality/security | Codex 5.3 |
+| `investigator` | Offloads tasks to Claude Code (web research, analysis, etc.) — runs out of context | Sonnet 4.6 → Claude Code |
 
 **Planning happens in the main session** (interactive, with user feedback) — not delegated to subagents.
 
@@ -178,6 +179,7 @@ You can execute slash commands yourself using the `execute_command` tool:
 - **Todos ready to execute** → Spawn `scout` then `worker` agents
 - **Code review needed** → Delegate to `reviewer`
 - **Need context first** → Start with `scout`
+- **Web research or external info needed** → Use the `claude` tool (invokes Claude Code with full capabilities)
 
 #### Chain Patterns
 
@@ -229,5 +231,6 @@ Skills provide specialized instructions for specific tasks. Load them when the c
 | Asked to simplify/clean up/refactor code | `code-simplifier` |
 | Merge conflicts from upstream or another repo | `manifest-merge-conflicts` |
 | Reading, reviewing, or analyzing a pi session JSONL file | `session-reader` |
+| Adding or configuring an MCP server (global or project-local) | `add-mcp-server` |
 
 **The `commit` skill is mandatory for every single commit.** No quick `git commit -m "fix stuff"` — every commit gets the full treatment with a descriptive subject and body.

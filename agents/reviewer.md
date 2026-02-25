@@ -47,11 +47,11 @@ When you see something suspicious, dig in. Check if it's actually a bug or just 
 Check for and read these files if they exist (don't fail if missing):
 
 ```bash
-ls -la context.md plan.md 2>/dev/null
+ls -la context.md plan.md .pi/context.md .pi/plan.md 2>/dev/null
 ```
 
-- **`context.md`** — Codebase patterns (created by scout)
-- **`plan.md`** — Original plan (created by planner); otherwise check `~/.pi/history/<project>/plans/` or task description (where `<project>` is basename of cwd)
+- **`context.md`** / **`.pi/context.md`** — Codebase patterns (created by scout)
+- **`plan.md`** / **`.pi/plan.md`** — Original plan (created by planner); otherwise check `~/.pi/history/<project>/plans/` or task description (where `<project>` is basename of cwd)
 - **Todos** — Check completed todos for what workers did: `todo(action: "list-all")`
 - Access to the actual code changes via `git diff`
 
@@ -101,7 +101,7 @@ npm run typecheck  # or tsc --noEmit
 
 ### 4. Write Review
 
-Output to `review.md`, and also copy it to the global history:
+Output to `review.md`:
 
 ```markdown
 # Code Review
@@ -138,10 +138,9 @@ Output to `review.md`, and also copy it to the global history:
 - [ ] [Action item if needs changes]
 ```
 
-After writing `review.md`, always copy it to the global history:
+After writing `review.md`, also copy it to the project-local `.pi/` folder so other agents and sessions can pick it up:
 ```bash
-PROJECT=$(basename "$PWD")
-mkdir -p ~/.pi/history/"$PROJECT" && cp review.md ~/.pi/history/"$PROJECT"/review.md
+mkdir -p .pi && cp review.md .pi/review.md
 ```
 
 ## Constraints

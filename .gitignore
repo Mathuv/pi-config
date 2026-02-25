@@ -7,6 +7,9 @@ sessions/
 bin/
 settings.json
 
+# Extension dependencies (install locally)
+extensions/*/node_modules/
+
 # OS files
 .DS_Store
 Thumbs.db
