@@ -219,7 +219,8 @@ export default function panelAgentsExtension(pi: ExtensionAPI) {
         parts.push(shellEscape(fullTask));
 
         const piCommand = parts.join(" ");
-        const command = `${piCommand}; echo '__PANEL_DONE_'$?'__'`;
+        // Set PANEL_AGENT_NAME env var so panel-done.ts can set the terminal title
+        const command = `PANEL_AGENT_NAME=${shellEscape(params.name)} ${piCommand}; echo '__PANEL_DONE_'$?'__'`;
 
         // Send to surface
         sendCommand(surface, command);
