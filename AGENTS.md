@@ -243,11 +243,12 @@ Always pass the extensions needed for the tools the agent uses. Agent `.md` file
 panel_agent({
   name: "Iterate",
   interactive: true,
-  task: "[describe the bug or change needed]. Context: [what was just built]"
+  fork: true,
+  task: "[describe the bug or change needed]"
 })
 ```
 
-Use this when the user says "let me fix this real quick", "iterate on this", or when they want to do focused work without polluting the main session's context.
+`fork: true` copies the current session — the sub-agent has full conversation context. All extensions and skills auto-discover (no `extensions` param = everything). Use when the user says "let me fix this real quick", "iterate on this", or when they want focused work without polluting the main session's context.
 
 **Panel agents vs subagents:** Panel agents = visible, interactive possible. Subagents = background, headless. Both read the same agent definitions.
 

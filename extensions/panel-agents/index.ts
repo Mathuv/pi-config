@@ -33,6 +33,7 @@ const PanelAgentParams = Type.Object({
   skills: Type.Optional(Type.String({ description: "Comma-separated skills (overrides agent default)" })),
   tools: Type.Optional(Type.String({ description: "Comma-separated tools (overrides agent default)" })),
   extensions: Type.Optional(Type.String({ description: "Comma-separated extension paths to load" })),
+  fork: Type.Optional(Type.Boolean({ description: "Fork the current session — sub-agent gets full conversation context. Use for iterate/bugfix patterns." })),
 });
 
 interface AgentDefaults {
@@ -176,12 +177,19 @@ export default function panelAgentsExtension(pi: ExtensionAPI) {
           `${skillPrefix}${roleBlock}\n\n${modeHint}\n\n${params.task}\n\n${summaryInstruction}`;
 
         // Build pi command
-        // Default: fresh session. The caller passes context in the task message.
-        // Sharing the full session overwhelms the agent in long conversations —
-        // it continues the parent conversation instead of focusing on its task.
-        // The branch_summary still gets written to the MAIN session for /tree visibility.
         const parts: string[] = ["pi"];
-        parts.push("--session-dir", shellEscape(dirname(sessionFile)));
+
+        // Fork mode: copy the session file so the sub-agent has full context.
+        // Used for iterate/bugfix patterns where context matters.
+        // Default: fresh session — avoids overwhelming the agent in long sessions.
+        let forkedSessionFile: string | null = null;
+        if (params.fork) {
+          const { copySessionFile } = await import("./session.ts");
+          forkedSessionFile = copySessionFile(sessionFile, dirname(sessionFile));
+          parts.push("--session", shellEscape(forkedSessionFile));
+        } else {
+          parts.push("--session-dir", shellEscape(dirname(sessionFile)));
+        }
         // Always load panel-done extension so autonomous agents can self-terminate
         const panelDonePath = join(dirname(new URL(import.meta.url).pathname), "panel-done.ts");
 
@@ -251,13 +259,20 @@ export default function panelAgentsExtension(pi: ExtensionAPI) {
 
         const elapsed = Math.floor((Date.now() - startTime) / 1000);
 
-        // Find the sub-agent's session file (newest .jsonl in the session dir)
-        const sessionDir = dirname(sessionFile);
-        const sessionFiles = readdirSync(sessionDir)
-          .filter((f) => f.endsWith(".jsonl"))
-          .map((f) => ({ name: f, path: join(sessionDir, f), mtime: statSync(join(sessionDir, f)).mtimeMs }))
-          .sort((a, b) => b.mtime - a.mtime);
-        const subSessionFile = sessionFiles.find((f) => f.path !== sessionFile);
+        // Find the sub-agent's session file
+        let subSessionFile: { path: string } | undefined;
+        if (forkedSessionFile) {
+          // Fork mode: the forked file IS the sub-agent's session
+          subSessionFile = { path: forkedSessionFile };
+        } else {
+          // Fresh session mode: find the newest .jsonl that isn't the main session
+          const sessionDir = dirname(sessionFile);
+          const sessionFiles = readdirSync(sessionDir)
+            .filter((f) => f.endsWith(".jsonl"))
+            .map((f) => ({ name: f, path: join(sessionDir, f), mtime: statSync(join(sessionDir, f)).mtimeMs }))
+            .sort((a, b) => b.mtime - a.mtime);
+          subSessionFile = sessionFiles.find((f) => f.path !== sessionFile);
+        }
 
         let summary: string;
         if (subSessionFile) {
