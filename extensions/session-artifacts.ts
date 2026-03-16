@@ -1,8 +1,12 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { highlightCode, getLanguageFromPath, keyHint } from "@mariozechner/pi-coding-agent";
+import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
+
+const PREVIEW_LINES = 10;
 
 export default function (pi: ExtensionAPI) {
   pi.registerTool({
@@ -21,6 +25,57 @@ export default function (pi: ExtensionAPI) {
       content: Type.String({ description: "File content" }),
     }),
 
+    renderCall(args, theme) {
+      const name = args.name ?? "...";
+      const content = args.content ?? "";
+
+      let text = theme.fg("toolTitle", theme.bold("write_artifact")) + " " + theme.fg("accent", name);
+
+      if (content) {
+        const lang = getLanguageFromPath(name);
+        const lines = lang ? highlightCode(content, lang) : content.split("\n");
+        const totalLines = lines.length;
+        // During streaming, show preview
+        const displayLines = lines.slice(0, PREVIEW_LINES);
+        const remaining = totalLines - PREVIEW_LINES;
+
+        text += "\n\n" + displayLines.map((line: string) => (lang ? line : theme.fg("toolOutput", line))).join("\n");
+
+        if (remaining > 0) {
+          text += theme.fg("muted", `\n... (${remaining} more lines, ${totalLines} total)`);
+        }
+      }
+
+      return new Text(text, 0, 0);
+    },
+
+    renderResult(result, { expanded }, theme) {
+      const details = result.details as { path?: string; name?: string; content?: string } | undefined;
+      const name = details?.name ?? "artifact";
+      const content = details?.content ?? "";
+
+      let text = theme.fg("success", "✓") + " " + theme.fg("accent", details?.path ?? name);
+
+      if (content) {
+        const lang = getLanguageFromPath(name);
+        const lines = lang ? highlightCode(content, lang) : content.split("\n");
+        const totalLines = lines.length;
+        const maxLines = expanded ? lines.length : PREVIEW_LINES;
+        const displayLines = lines.slice(0, maxLines);
+        const remaining = totalLines - maxLines;
+
+        text += "\n\n" + displayLines.map((line: string) => (lang ? line : theme.fg("toolOutput", line))).join("\n");
+
+        if (remaining > 0) {
+          text +=
+            theme.fg("muted", `\n... (${remaining} more lines, ${totalLines} total,`) +
+            ` ${keyHint("expandTools", "to expand")})`;
+        }
+      }
+
+      return new Text(text, 0, 0);
+    },
+
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const project = basename(ctx.cwd);
       const sessionId = ctx.sessionManager.getSessionId();
@@ -37,7 +92,7 @@ export default function (pi: ExtensionAPI) {
 
       return {
         content: [{ type: "text", text: `Artifact written to: ${filePath}` }],
-        details: { path: filePath, name: params.name, sessionId },
+        details: { path: filePath, name: params.name, sessionId, content: params.content },
       };
     },
   });
