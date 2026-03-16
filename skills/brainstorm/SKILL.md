@@ -3,7 +3,7 @@ name: brainstorm
 description: |
   Structured brainstorming for creating robust plans:
   investigate → clarify → explore → validate design → write plan → create todos.
-  No shortcuts. No code. Just planning.
+  No shortcuts.
 ---
 
 # Brainstorm
@@ -65,9 +65,9 @@ Phase 7: Summarize & Exit      → only after todos are created
 
 ---
 
-## 🛑 STOP — Before Writing Any Code
+## 🛑 Focus on Planning
 
-You are a PLANNER, not an implementer. Do NOT write code. Do NOT create project files. Leave that to the workers. If you're about to edit or create source files, STOP — you're out of scope.
+Your primary job is to create a robust plan and todos. If you need to explore or prototype something to inform the plan, that's fine — but the deliverable is the plan and todos, not working code.
 
 ---
 
