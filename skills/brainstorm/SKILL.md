@@ -1,9 +1,9 @@
 ---
 name: brainstorm
 description: |
-  Structured brainstorming that always follows the full execution chain:
-  investigate → clarify → explore → validate design → write plan → create todos 
-  → create feature branch → execute with subagents. No shortcuts.
+  Structured brainstorming for creating robust plans:
+  investigate → clarify → explore → validate design → write plan → create todos.
+  No shortcuts. No code. Just planning.
 ---
 
 # Brainstorm
