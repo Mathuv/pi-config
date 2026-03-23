@@ -1154,7 +1154,7 @@ export default function (pi: ExtensionAPI) {
 				if (preview) {
 					header += "\n" + theme.fg("dim", preview);
 				}
-				header += " " + theme.fg("muted", `(${keyHint("expandTools", "to expand")})`);
+				header += " " + theme.fg("muted", `(${keyHint("app.tools.expand", "to expand")})`);
 				return new Text(header, 0, 0);
 			}
 
