@@ -200,55 +200,45 @@ This isn't a rigid hierarchy — it's a team of specialists. Each agent leans ha
 
 #### Subagents
 
-Subagents spawn visible pi sessions in cmux terminals. The user can watch progress in real-time and optionally interact. Autonomous agents call `subagent_done` to self-terminate.
+Subagents are **async** — the tool returns immediately and the agent can keep working. When a subagent finishes, its result is steered back to the main session as an interrupt. A live widget at the bottom of the screen shows all running subagents with elapsed time and progress.
 
 The `agent` parameter loads defaults from `~/.pi/agent/agents/<name>.md`. Model, tools, skills, thinking — all inherited. Explicit params override agent defaults.
 
 ```typescript
 // Use existing agent definitions — full transparency
-subagent({ name: "Scout", agent: "scout", interactive: false, task: "Analyze the codebase..." })
-subagent({ name: "Worker", agent: "worker", interactive: false, task: "Implement TODO-xxxx..." })
-subagent({ name: "Reviewer", agent: "reviewer", interactive: false, task: "Review recent changes..." })
-subagent({ name: "Researcher", agent: "researcher", interactive: false, task: "Research [topic]..." })
+subagent({ name: "Scout", agent: "scout", task: "Analyze the codebase..." })
+subagent({ name: "Worker", agent: "worker", task: "Implement TODO-xxxx..." })
+subagent({ name: "Reviewer", agent: "reviewer", task: "Review recent changes..." })
+subagent({ name: "Researcher", agent: "researcher", task: "Research [topic]..." })
 
-// Planner — interactive, loads config from ~/.pi/agent/agents/planner.md
-subagent({
-  name: "Planner",
-  agent: "planner",
-  interactive: true,
-  task: "Plan: [description]. Context: [relevant info]"
-})
+// Planner — loads config from ~/.pi/agent/agents/planner.md
+subagent({ name: "Planner", agent: "planner", task: "Plan: [description]. Context: [relevant info]" })
 
 // Iterate — fork the session for focused work, full context preserved
-subagent({ name: "Iterate", interactive: true, fork: true, task: "Fix the bug where..." })
+subagent({ name: "Iterate", fork: true, task: "Fix the bug where..." })
 
 // Override agent defaults when needed
 subagent({ name: "Worker", agent: "worker", model: "anthropic/claude-haiku-4-5", task: "Quick fix..." })
 
-// Parallel subagents — run multiple agents concurrently with tiled layout
-parallel_subagents({
-  agents: [
-    { name: "Scout: Auth", agent: "scout", task: "Analyze auth module" },
-    { name: "Scout: DB", agent: "scout", task: "Map database schema" },
-  ]
-})
+// Parallel execution — just call subagent multiple times, they all run concurrently
+subagent({ name: "Scout: Auth", agent: "scout", task: "Analyze auth module" })
+subagent({ name: "Scout: DB", agent: "scout", task: "Map database schema" })
 ```
 
-**Parallel execution:** Use `parallel_subagents` to run multiple autonomous agents concurrently. Each gets its own cmux terminal in a tiled layout (first splits right, subsequent stack vertically). Progress updates stream in as each agent finishes — no waiting for all to complete.
+**Parallel execution:** Since subagents are async, just call `subagent` multiple times — they all run concurrently in their own cmux terminals. Results steer back independently as each finishes.
 
 Subagents are full pi sessions — all extensions and skills auto-discover. A subagent can spawn another subagent (e.g., planner spawns a scout). Agent `.md` files in `~/.pi/agent/agents/` define model, tools, skills, thinking level.
 
 **Slash commands:**
 - `/plan <what to build>` — start the full planning workflow (investigate → planner → execute → review)
 - `/subagent <agent> <task>` — spawn a subagent by name (e.g., `/subagent scout analyze auth module`)
-- `/iterate [task]` — fork session into interactive subagent for quick fixes
+- `/iterate [task]` — fork session for quick fixes
 
 **Iterate pattern** — for quick fixes and ad-hoc work after a big implementation. The user branches off into a focused subagent, fixes a bug or makes a change, then comes back with just the summary. Keeps the main session's context clean.
 
 ```typescript
 subagent({
   name: "Iterate",
-  interactive: true,
   fork: true,
   task: "[describe the bug or change needed]"
 })
