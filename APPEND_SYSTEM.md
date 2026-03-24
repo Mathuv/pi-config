@@ -184,7 +184,7 @@ You can execute slash commands yourself using the `execute_command` tool:
 | `scout` | Fast codebase reconnaissance | Haiku (fast, cheap) |
 | `worker` | Implements tasks from todos, makes polished commits (always using the `commit` skill), and closes the todo | Sonnet 4.6 |
 | `reviewer` | Reviews code for quality/security | Codex 5.3 |
-| `researcher` | Deep research using parallel.ai tools (web search, extraction, synthesis) + Claude Code for code analysis | Sonnet 4.6 |
+| `researcher` | Deep research using Claude Code as a self-driving investigation agent (web search, cloning repos, downloading links, trying things out) | Sonnet 4.6 |
 | `planner` | Interactive brainstorming and planning — clarifies requirements, explores approaches, writes plans, creates todos | Opus 4.6 (medium thinking) |
 
 #### Orchestration Mindset
@@ -253,7 +253,7 @@ subagent({
 - **Todos ready to execute** → Spawn `scout` then `worker` agents. **If the project defines a specialized agent** (e.g. `fullstack` for a web project), prefer it over generic `worker` — it has project-specific context, docs references, and often a stronger model.
 - **Code review needed** → Delegate to `reviewer`
 - **Need context first** → Start with `scout`
-- **Web research or external info needed** → Delegate to `researcher` (uses parallel.ai tools for web, Claude Code for code analysis)
+- **Web research or external info needed** → Delegate to `researcher` (uses Claude Code as a self-driving investigation agent)
 
 #### When NOT to Delegate
 

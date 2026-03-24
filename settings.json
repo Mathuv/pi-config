@@ -11,12 +11,6 @@
         "+extensions/smart-sessions.ts"
       ]
     },
-    {
-      "source": "git:github.com/HazAT/pi-parallel",
-      "extensions": [
-        "+extension/index.ts"
-      ]
-    },
     "git:github.com/pasky/chrome-cdp-skill",
     "git:github.com/HazAT/glimpse",
     "git:github.com/HazAT/pi-interactive-subagents",

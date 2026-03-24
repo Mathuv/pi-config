@@ -370,32 +370,33 @@ export default function (pi: ExtensionAPI) {
 		name: "claude",
 		label: "Claude Code",
 		description:
-			`Spawn a separate Claude Code session. ONLY use when the user explicitly asks for it, or for genuinely ` +
-			`complex multi-step investigations spanning many files that you cannot do yourself. ` +
-			`You have read, edit, write, bash, and all other tools — use THOSE first. ` +
-			`Do NOT delegate to Claude Code out of convenience or laziness. ` +
-			`This tool is expensive, slow, and spins up a full separate session. ` +
-			`If you can do the task with your own tools (read files, run commands, edit code, search the web), do it yourself. ` +
+			`Spawn a self-driving Claude Code session for deep investigation and research. ` +
+			`Claude Code has full autonomy: web search, bash, file access, git clone, curl, code editing — everything. ` +
+			`Use it as a hands-off research agent that investigates topics, clones repos, downloads and analyzes links, ` +
+			`tries things out, and comes back with detailed findings. ` +
+			`Great for: researching libraries/APIs, cloning and exploring repos, downloading and analyzing content, ` +
+			`multi-step investigations, trying out code approaches, deep dives across many files. ` +
 			`Output is truncated to ${DEFAULT_MAX_LINES} lines or ${formatSize(DEFAULT_MAX_BYTES)}. ` +
 			`Set outputFile to write the result to a file instead of returning inline — saves tokens in your context. ` +
 			`Set resumeSessionId to continue a previous session (e.g. after cancellation or for follow-up questions).`,
 
 		promptSnippet:
-			"Spawn a separate Claude Code session. ONLY use when the user explicitly asks for it, or for genuinely " +
-			"complex multi-step investigations spanning many files that you cannot do yourself. " +
-			"You have read, edit, write, bash, and all other tools — use THOSE first. Do NOT delegate to Claude Code out of convenience or laziness. " +
-			"This tool is expensive, slow, and spins up a full separate session. " +
-			"If you can do the task with your own tools (read files, run commands, edit code, search the web), do it yourself. " +
+			"Spawn a self-driving Claude Code session for deep investigation and research. " +
+			"Claude Code has full autonomy: web search, bash, file access, git clone, curl, code editing — everything. " +
+			"Use it as a hands-off research agent that investigates topics, clones repos, downloads and analyzes links, " +
+			"tries things out, and comes back with detailed findings. " +
+			"Great for: researching libraries/APIs, cloning and exploring repos, downloading and analyzing content, " +
+			"multi-step investigations, trying out code approaches, deep dives across many files. " +
 			`Output is truncated to ${DEFAULT_MAX_LINES} lines or ${formatSize(DEFAULT_MAX_BYTES)}. ` +
 			"Set outputFile to write the result to a file instead of returning inline — saves tokens in your context. " +
 			"Set resumeSessionId to continue a previous session (e.g. after cancellation or for follow-up questions).",
 
 		promptGuidelines: [
-			"Do NOT use claude as a lazy handoff — you have read, edit, write, bash, parallel_search, parallel_research, parallel_extract, and all other tools. Use those directly.",
-			"Only invoke claude when: (1) the user explicitly requests it, OR (2) the task genuinely requires autonomous multi-step execution across dozens of files that would be impractical for you to do directly",
-			"For web research, use parallel_search/parallel_research/parallel_extract — NOT claude",
-			"For reading files, running commands, editing code, checking git status — use your own tools, NOT claude",
-			"Claude is expensive and slow. Default to doing the work yourself. When in doubt, don't use claude.",
+			"Use claude as your go-to research and investigation tool — it's a fully autonomous agent with web search, bash, git, curl, and all coding tools.",
+			"Delegate to claude when: investigating a library/API, exploring a repo, downloading and analyzing links, deep multi-file investigations, trying out approaches, or any task that benefits from autonomous exploration.",
+			"For simple file reads, single edits, or quick commands you already know the answer to — use your own tools directly, don't spawn a full session.",
+			"Always set outputFile for research tasks — keeps your context clean and lets you selectively read the findings.",
+			"Give claude clear investigation goals and let it drive — it will clone repos, read docs, try things, and report back.",
 		],
 
 		parameters: Type.Object({
