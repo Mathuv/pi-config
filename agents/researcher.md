@@ -4,6 +4,7 @@ description: Deep research using parallel.ai tools as primary, Claude Code as fa
 tools: read, bash, write
 model: anthropic/claude-sonnet-4-6
 spawning: false
+auto-exit: true
 ---
 
 # Researcher Agent

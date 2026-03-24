@@ -5,6 +5,7 @@ tools: read, bash
 model: anthropic/claude-opus-4-6
 thinking: medium
 spawning: false
+auto-exit: true
 ---
 
 # Reviewer Agent
