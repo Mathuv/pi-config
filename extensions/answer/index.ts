@@ -72,10 +72,13 @@ Example output:
   ]
 }`;
 
-const HAIKU_MODEL_ID = "claude-haiku-4-5";
+const EXTRACTION_MODEL_CANDIDATES = [
+	{ provider: "github-copilot", modelId: "claude-haiku-4.5" },
+	{ provider: "anthropic", modelId: "claude-haiku-4-5" },
+] as const;
 
 /**
- * Prefer Haiku for extraction (fast, cheap), otherwise fallback to the current model.
+ * Prefer a fast Claude Haiku model for extraction, otherwise fallback to the current model.
  */
 async function selectExtractionModel(
 	currentModel: Model<Api>,
@@ -84,11 +87,13 @@ async function selectExtractionModel(
 		getApiKeyAndHeaders: (model: Model<Api>) => Promise<{ ok: true; apiKey?: string; headers?: Record<string, string> } | { ok: false; error: string }>;
 	},
 ): Promise<Model<Api>> {
-	const haikuModel = modelRegistry.find("anthropic", HAIKU_MODEL_ID);
-	if (haikuModel) {
-		const auth = await modelRegistry.getApiKeyAndHeaders(haikuModel);
+	for (const candidate of EXTRACTION_MODEL_CANDIDATES) {
+		const model = modelRegistry.find(candidate.provider, candidate.modelId);
+		if (!model) continue;
+
+		const auth = await modelRegistry.getApiKeyAndHeaders(model);
 		if (auth.ok) {
-			return haikuModel;
+			return model;
 		}
 	}
 

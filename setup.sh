@@ -22,9 +22,13 @@ if [ ! -f "$EXPECTED_DIR/settings.json" ]; then
   echo "Creating settings.json..."
   cat > "$EXPECTED_DIR/settings.json" << 'EOF'
 {
-  "defaultProvider": "anthropic",
-  "defaultModel": "claude-opus-4-6",
+  "defaultProvider": "github-copilot",
+  "defaultModel": "claude-opus-4.6",
   "defaultThinkingLevel": "medium",
+  "enabledModels": [
+    "github-copilot/*",
+    "openai-codex/*"
+  ],
   "packages": [
     "git:github.com/nicobailon/pi-mcp-adapter",
     {
