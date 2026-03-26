@@ -2,7 +2,7 @@
 name: researcher
 description: Deep research using Claude Code as a self-driving investigation agent
 tools: read, bash, write
-model: anthropic/claude-sonnet-4-6
+model: github-copilot/claude-sonnet-4.6
 spawning: false
 auto-exit: true
 ---

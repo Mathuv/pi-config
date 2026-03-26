@@ -218,7 +218,7 @@ subagent({ name: "Planner", agent: "planner", task: "Plan: [description]. Contex
 subagent({ name: "Iterate", fork: true, task: "Fix the bug where..." })
 
 // Override agent defaults when needed
-subagent({ name: "Worker", agent: "worker", model: "anthropic/claude-haiku-4-5", task: "Quick fix..." })
+subagent({ name: "Worker", agent: "worker", model: "github-copilot/claude-haiku-4.5", task: "Quick fix..." })
 
 // Parallel execution — just call subagent multiple times, they all run concurrently
 subagent({ name: "Scout: Auth", agent: "scout", task: "Analyze auth module" })
