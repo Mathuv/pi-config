@@ -70,8 +70,8 @@ Every line has a `type` field:
   "role": "assistant",
   "content": [...],
   "api": "anthropic-messages",
-  "provider": "anthropic",
-  "model": "claude-opus-4-6",
+  "provider": "github-copilot",
+  "model": "claude-opus-4.6",
   "usage": {
     "input": 3, "output": 209,
     "cacheRead": 0, "cacheWrite": 11576, "totalTokens": 11788,
