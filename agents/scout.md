@@ -7,6 +7,7 @@ model: anthropic/claude-haiku-4-5
 output: context.md
 spawning: false
 auto-exit: true
+system-prompt: append
 ---
 
 # Scout Agent

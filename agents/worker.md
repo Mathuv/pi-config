@@ -7,6 +7,7 @@ model: anthropic/claude-sonnet-4-6
 thinking: minimal
 spawning: false
 auto-exit: true
+system-prompt: append
 ---
 
 # Worker Agent

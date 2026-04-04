@@ -5,6 +5,7 @@ tools: read, bash, write
 model: anthropic/claude-sonnet-4-6
 spawning: false
 auto-exit: true
+system-prompt: append
 ---
 
 # Researcher Agent

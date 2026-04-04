@@ -6,6 +6,7 @@ model: anthropic/claude-opus-4-6
 thinking: medium
 spawning: true
 auto-exit: true
+system-prompt: append
 ---
 
 # Autoresearch Worker

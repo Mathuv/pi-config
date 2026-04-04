@@ -4,10 +4,7 @@
   "defaultModel": "claude-opus-4-6",
   "defaultThinkingLevel": "medium",
   "packages": [
-    {
-      "source": "git:github.com/HazAT/pi-smart-sessions",
-      "extensions": ["+extensions/smart-sessions.ts"]
-    },
+    "git:github.com/HazAT/pi-smart-sessions",
     "git:github.com/pasky/chrome-cdp-skill",
     "git:github.com/HazAT/glimpse",
     "git:github.com/HazAT/pi-interactive-subagents",
@@ -15,7 +12,8 @@
       "source": "git:github.com/HazAT/pi-autoresearch",
       "extensions": ["-extensions/pi-autoresearch/index.ts"],
       "skills": []
-    }
+    },
+    "git:github.com:HazAT/pi-parallel"
   ],
   "hideThinkingBlock": false,
   "extensions": [
