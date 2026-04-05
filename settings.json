@@ -1,13 +1,14 @@
 {
   "lastChangelogVersion": "0.65.0",
-  "defaultProvider": "github-copilot",
-  "defaultModel": "claude-opus-4.6",
-  "defaultThinkingLevel": "medium",
+  "defaultProvider": "openai-codex",
+  "defaultModel": "gpt-5.4",
+  "defaultThinkingLevel": "high",
   "enabledModels": [
     "github-copilot/*",
     "openai-codex/*"
   ],
   "packages": [
+    "git:github.com/nicobailon/pi-mcp-adapter",
     "git:github.com/HazAT/pi-smart-sessions",
     "git:github.com/pasky/chrome-cdp-skill",
     "git:github.com/HazAT/glimpse",
@@ -26,5 +27,8 @@
   "extensions": [
     "+extensions/cmux/index.ts",
     "+extensions/claude-tool/index.ts"
-  ]
+  ],
+  "compaction": {
+    "enabled": false
+  }
 }
