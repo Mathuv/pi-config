@@ -1,5 +1,5 @@
 {
-  "lastChangelogVersion": "0.65.0",
+  "lastChangelogVersion": "0.66.1",
   "defaultProvider": "openai-codex",
   "defaultModel": "gpt-5.4",
   "defaultThinkingLevel": "high",
@@ -9,7 +9,6 @@
   ],
   "packages": [
     "git:github.com/nicobailon/pi-mcp-adapter",
-    "git:github.com/HazAT/pi-smart-sessions",
     "git:github.com/pasky/chrome-cdp-skill",
     "git:github.com/HazAT/glimpse",
     "git:github.com/HazAT/pi-interactive-subagents",
@@ -20,8 +19,12 @@
       ],
       "skills": []
     },
-    "git:github.com:HazAT/pi-parallel",
-    "git:https://github.com/badlogic/pi-diff-review"
+    "git:github.com/HazAT/pi-parallel",
+    "git:https://github.com/badlogic/pi-diff-review",
+    "npm:@tmustier/pi-files-widget",
+    "npm:pi-markdown-preview",
+    "npm:pi-web-access",
+    "git:github.com/Mathuv/pi-smart-sessions"
   ],
   "hideThinkingBlock": false,
   "extensions": [
