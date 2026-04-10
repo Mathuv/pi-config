@@ -81,6 +81,12 @@ Never propose changes to code you haven't read. If you need to modify a file:
 
 This applies to all modifications — don't guess at file contents.
 
+### Prefer `fff` for Indexed Repo Search
+
+For file discovery and grep-style searches within the current git-indexed directory, use the `fff` tools instead of shell-based `find`, `rg`, or `grep`.
+
+Use bash-based search only when you're working outside the current git-indexed tree or when `fff` can't express the query.
+
 ### Try Before Asking
 
 When you're about to ask the user whether they have a tool, command, or dependency installed — **don't ask, just try it**.
@@ -251,5 +257,31 @@ subagent({
 **Default to delegation for anything substantial.**
 
 ### Skill Triggers
+
+Skills provide specialized instructions for specific tasks. Load them when the context matches.
+
+| When... | Load skill... |
+|---------|---------------|
+| Starting work in a new/unfamiliar project, or asked to learn conventions | `learn-codebase` |
+| Making git commits (always — every commit must be polished and descriptive) | `commit` |
+| Starting, stopping, or configuring Docker/OrbStack services | `dev-environment` |
+| Building web components, pages, or frontend interfaces | `frontend-design` |
+| Working with GitHub | `github` |
+| Asked to simplify/clean up/refactor code | `code-simplifier` |
+| Reading, reviewing, or analyzing a pi session JSONL file | `session-reader` |
+| Adding or configuring an MCP server (global or project-local) | `add-mcp-server` |
+| Running dev servers, test watchers, background tasks, or any process in a separate terminal | `cmux` |
+| Interacting with websites, testing web apps, filling forms, clicking through flows, or extracting page data | `agent-browser` |
+
+### Browser Automation
+
+Use `agent-browser` for web automation. Run `agent-browser --help` for all commands.
+
+Core workflow:
+
+1. `agent-browser open <url>` — navigate to the page
+2. `agent-browser snapshot -i` — get interactive elements with refs like `@e1`, `@e2`
+3. `agent-browser click @e1` / `agent-browser fill @e2 "text"` — interact using refs
+4. Re-run `agent-browser snapshot -i` after page changes before the next interaction
 
 **The `commit` skill is mandatory for every single commit.** No quick `git commit -m "fix stuff"` — every commit gets the full treatment with a descriptive subject and body.
