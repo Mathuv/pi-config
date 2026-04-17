@@ -78,7 +78,6 @@ Loaded on-demand when the context matches.
 | **self-improve** | End-of-session retrospective — surfaces improvements and creates todos |
 | **cmux** | Managing terminal sessions via cmux |
 | **presentation-creator** | Creating data-driven presentation slides |
-| **home-project-assistant** | Planning, costing, and visualizing personal home/DIY projects |
 | **add-mcp-server** | Adding MCP server configurations |
 
 ## Extensions
