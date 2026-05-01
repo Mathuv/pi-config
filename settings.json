@@ -1,7 +1,7 @@
 {
-  "lastChangelogVersion": "0.66.1",
+  "lastChangelogVersion": "0.71.1",
   "defaultProvider": "openai-codex",
-  "defaultModel": "gpt-5.4",
+  "defaultModel": "gpt-5.5",
   "defaultThinkingLevel": "high",
   "enabledModels": [
     "github-copilot/*",
@@ -23,8 +23,13 @@
     "git:https://github.com/badlogic/pi-diff-review",
     "npm:@tmustier/pi-files-widget",
     "npm:pi-markdown-preview",
-    "npm:pi-web-access",
-    "git:github.com/Mathuv/pi-smart-sessions"
+    "git:github.com/Mathuv/pi-smart-sessions",
+    "npm:pi-interview",
+    "git:github.com/earendil-works/pi-review",
+    "npm:@ff-labs/pi-fff",
+    "git:github.com/hiasinho/pi-dumb",
+    "git:github.com/nicobailon/pi-powerline-footer",
+    "../../devel/pi-code-previews"
   ],
   "hideThinkingBlock": false,
   "extensions": [
@@ -33,5 +38,10 @@
   ],
   "compaction": {
     "enabled": false
-  }
+  },
+  "terminal": {
+    "clearOnShrink": false,
+    "showTerminalProgress": true
+  },
+  "transport": "websocket-cached"
 }
