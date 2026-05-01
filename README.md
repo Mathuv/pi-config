@@ -13,7 +13,7 @@ Clone this repo directly to `~/.pi/agent/` — pi auto-discovers everything from
 
 # 2. Clone this repo as your agent config
 mkdir -p ~/.pi
-git clone git@github.com:HazAT/pi-config ~/.pi/agent
+git clone git@github.com:Mathuv/pi-config ~/.pi/agent
 
 # 3. Run setup (installs packages + extension deps)
 cd ~/.pi/agent && ./setup.sh

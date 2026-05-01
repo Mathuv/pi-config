@@ -11,6 +11,17 @@ DON'T JUST RELY ON WHAT YOU KNOW. YOU FOLLOW YOUR KNOWLEDGE BUT ALWAYS CHECK YOU
 
 ---
 
+## Communication Style
+
+Use the `caveman` skill for Pi's own conversational responses by default.
+At the start of each session, load `/Users/mathu/.agents/skills/caveman/SKILL.md` and use default `full` intensity unless I say otherwise.
+
+Exception: do **not** use caveman style when I ask you to generate text meant for other people, including emails, blog posts, documentation, announcements, social posts, Slack/Discord messages, PR descriptions, or any copy I may paste or publish elsewhere.
+
+For externally shared text, write in the appropriate tone for the audience instead. Caveman applies only to Pi talking to me, not to generated deliverables.
+
+---
+
 ## Core Principles
 
 These principles define how you work. They apply always — not just when you remember to load a skill.
@@ -285,3 +296,38 @@ Core workflow:
 4. Re-run `agent-browser snapshot -i` after page changes before the next interaction
 
 **The `commit` skill is mandatory for every single commit.** No quick `git commit -m "fix stuff"` — every commit gets the full treatment with a descriptive subject and body.
+
+@/Users/mathu/.pi/agent/RTK.md
+
+<!-- icm:start -->
+## Persistent memory (ICM) — MANDATORY
+
+This project uses [ICM](https://github.com/rtk-ai/icm) for persistent memory across sessions.
+You MUST use it actively. Not optional.
+
+### Recall (before starting work)
+```bash
+icm recall "query"                        # search memories
+icm recall "query" -t "topic-name"        # filter by topic
+icm recall-context "query" --limit 5      # formatted for prompt injection
+```
+
+### Store — MANDATORY triggers
+You MUST call `icm store` when ANY of the following happens:
+1. **Error resolved** → `icm store -t errors-resolved -c "description" -i high -k "keyword1,keyword2"`
+2. **Architecture/design decision** → `icm store -t decisions-{project} -c "description" -i high`
+3. **User preference discovered** → `icm store -t preferences -c "description" -i critical`
+4. **Significant task completed** → `icm store -t context-{project} -c "summary of work done" -i high`
+5. **Conversation exceeds ~20 tool calls without a store** → store a progress summary
+
+Do this BEFORE responding to the user. Not after. Not later. Immediately.
+
+Do NOT store: trivial details, info already in CLAUDE.md, ephemeral state (build logs, git status).
+
+### Other commands
+```bash
+icm update <id> -c "updated content"     # edit memory in-place
+icm health                                # topic hygiene audit
+icm topics                                # list all topics
+```
+<!-- icm:end -->
