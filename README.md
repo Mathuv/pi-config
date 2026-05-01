@@ -50,11 +50,10 @@ Specialized roles with baked-in identity, workflow, and review rubrics. Most age
 
 | Agent | Source | Purpose |
 |-------|--------|---------|
-| **spec** | package | Interactive spec agent — clarifies WHAT to build (intent, requirements, ISC) |
-| **planner** | package | Interactive planning — takes a spec and figures out HOW to build it |
+| **planner** | package | Interactive planning — clarifies WHAT to build and figures out HOW (lightweight requirements + approach + plan + todos) |
 | **scout** | package | Fast codebase reconnaissance — gathers context without making changes |
 | **worker** | package | Implements tasks from todos, commits with polished messages |
-| **reviewer** | package | Reviews code for quality, security, correctness |
+| **reviewer** | local | Reviews code for quality, security, correctness (Codex 5.4) |
 | **visual-tester** | package | Visual QA — navigates web UIs via Chrome CDP, spots issues, produces reports |
 | **claude-code** | package | Delegates autonomous tasks to Claude Code |
 | **researcher** | local | Deep research using parallel.ai tools + Claude Code for code analysis |
