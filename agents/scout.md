@@ -67,7 +67,9 @@ cat tsconfig.json 2>/dev/null
 
 ## Output
 
-Write your findings as `context.md` using `write_artifact`:
+Use the `write` tool to save your findings. The orchestrator provides the target path in your task (typically `.pi/plans/YYYY-MM-DD-<name>/scout-context.md`). Report the exact path back in your summary so downstream agents can read it.
+
+**Content template:**
 
 ```markdown
 # Context for: [task summary]

@@ -22,6 +22,7 @@ This is not a formal test suite — it's "let me look at this and check if it's 
 ## Setup
 
 ### Prerequisites
+
 - Chrome with remote debugging enabled: `chrome://inspect/#remote-debugging` → toggle the switch
 - The target page open in a Chrome tab
 
@@ -45,29 +46,35 @@ Use the targetId prefix (e.g. `6BE827FA`) for all commands. Read the **chrome-cd
 ## What to Look For
 
 ### Layout & Spacing
+
 - Elements not aligned, inconsistent padding/margins
 - Content touching container edges, overflowing containers
 - Unexpected scrollbars
 
 ### Typography
+
 - Text clipped/truncated, overflowing containers
 - Font size hierarchy wrong (h1 smaller than h2)
 - Missing or broken web fonts
 
 ### Colors & Contrast
+
 - Text hard to read against background
 - Focus indicators invisible or missing
 - Inconsistent color usage
 
 ### Images & Media
+
 - Broken images, wrong aspect ratios
 - Images not responsive
 
 ### Z-index & Overlapping
+
 - Modals/dropdowns behind other elements
 - Fixed headers overlapping content
 
 ### Empty & Edge States
+
 - No data state, very long/short text, error states, loading states
 
 ---
@@ -76,11 +83,11 @@ Use the targetId prefix (e.g. `6BE827FA`) for all commands. Read the **chrome-cd
 
 Test at key breakpoints:
 
-| Name | Width | Height |
-|------|-------|--------|
-| Mobile | 375 | 812 |
-| Tablet | 768 | 1024 |
-| Desktop | 1280 | 800 |
+| Name    | Width | Height |
+| ------- | ----- | ------ |
+| Mobile  | 375   | 812    |
+| Tablet  | 768   | 1024   |
+| Desktop | 1280  | 800    |
 
 ```bash
 scripts/cdp.mjs evalraw <target> Emulation.setDeviceMetricsOverride '{"width":375,"height":812,"deviceScaleFactor":2,"mobile":true}'
@@ -125,11 +132,7 @@ Reset: `scripts/cdp.mjs evalraw <target> Emulation.setEmulatedMedia '{"features"
 
 ## Report
 
-Write using `write_artifact`:
-
-```
-write_artifact(name: "visual-test-report.md", content: "...")
-```
+Use the `write` tool to save the report. The orchestrator provides the target path in your task (typically `.pi/plans/YYYY-MM-DD-<name>/visual-test-report.md`). Report the exact path back in your summary.
 
 **Format:**
 
@@ -140,32 +143,38 @@ write_artifact(name: "visual-test-report.md", content: "...")
 **Viewports tested:** Mobile (375), Desktop (1280)
 
 ## Summary
+
 Brief overall impression. Ready to ship?
 
 ## Findings
 
 ### P0 — Blockers
+
 #### [Title]
+
 - **Location:** Page/component
 - **Description:** What's wrong
 - **Suggested fix:** How to fix
 
 ### P1 — Major
+
 ...
 
 ### P2 — Minor
+
 ...
 
 ## What's Working Well
+
 - Positive observations
 ```
 
-| Level | Meaning | Examples |
-|-------|---------|---------|
-| **P0** | Broken / unusable | Button doesn't work, content invisible |
-| **P1** | Major visual/UX | Layout broken on mobile, text unreadable |
-| **P2** | Cosmetic | Misaligned elements, wrong colors |
-| **P3** | Polish | Slightly off margins |
+| Level  | Meaning           | Examples                                 |
+| ------ | ----------------- | ---------------------------------------- |
+| **P0** | Broken / unusable | Button doesn't work, content invisible   |
+| **P1** | Major visual/UX   | Layout broken on mobile, text unreadable |
+| **P2** | Cosmetic          | Misaligned elements, wrong colors        |
+| **P3** | Polish            | Slightly off margins                     |
 
 ---
 
