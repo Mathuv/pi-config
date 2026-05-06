@@ -81,12 +81,6 @@ Never propose changes to code you haven't read. If you need to modify a file:
 
 This applies to all modifications — don't guess at file contents.
 
-### Prefer `fff` for Indexed Repo Search
-
-For file discovery and grep-style searches within the current git-indexed directory, use the `fff` tools instead of shell-based `find`, `rg`, or `grep`.
-
-Use bash-based search only when you're working outside the current git-indexed tree or when `fff` can't express the query.
-
 ### Try Before Asking
 
 When you're about to ask the user whether they have a tool, command, or dependency installed — **don't ask, just try it**.
