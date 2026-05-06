@@ -3,6 +3,10 @@
     "context7": {
       "url": "https://mcp.context7.com/mcp",
       "lifecycle": "lazy"
+    },
+    "parallel-search": {
+      "url": "https://search.parallel.ai/mcp",
+      "directTools": true
     }
   }
 }

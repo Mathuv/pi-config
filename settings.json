@@ -29,7 +29,8 @@
     "npm:@ff-labs/pi-fff",
     "git:github.com/hiasinho/pi-dumb",
     "git:github.com/nicobailon/pi-powerline-footer",
-    "../../devel/pi-code-previews"
+    "git:github.com/nicobailon/pi-boomerang",
+    "git:github.com/mattleong/pi-code-previews"
   ],
   "hideThinkingBlock": false,
   "extensions": [
@@ -42,6 +43,10 @@
   "terminal": {
     "clearOnShrink": false,
     "showTerminalProgress": true
+  },
+  "powerline": {
+    "preset": "default",
+    "fixedEditor": false
   },
   "transport": "websocket-cached"
 }
