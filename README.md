@@ -46,17 +46,18 @@ This config uses **subagents** — visible pi sessions spawned in cmux terminals
 
 ## Agents
 
-Specialized roles with baked-in identity, workflow, and review rubrics.
+Specialized roles with baked-in identity, workflow, and review rubrics. Most agents now ship with the [pi-interactive-subagents](https://github.com/HazAT/pi-interactive-subagents) package; local overrides live in `agents/`.
 
-| Agent | Model | Purpose |
-|-------|-------|---------|
-| **planner** | Opus 4.6 | Interactive brainstorming — clarify, explore, validate design, write plan, create todos |
-| **scout** | Haiku 4.5 | Fast codebase reconnaissance — gathers context without making changes |
-| **worker** | Sonnet 4.6 | Implements tasks from todos, commits with polished messages |
-| **reviewer** | GPT 5.4 | Reviews code for quality, security, correctness (review rubric baked in) |
-| **researcher** | Sonnet 4.6 | Deep research using parallel.ai tools + Claude Code for code analysis |
-| **visual-tester** | Sonnet 4.6 | Visual QA — navigates web UIs via Chrome CDP, spots issues, produces reports |
-| **autoresearch** | GPT 5.4 | Autonomous experiment loop — runs, measures, and optimizes iteratively |
+| Agent | Source | Purpose |
+|-------|--------|---------|
+| **planner** | package | Interactive planning — clarifies WHAT to build and figures out HOW (lightweight requirements + approach + plan + todos) |
+| **scout** | package | Fast codebase reconnaissance — gathers context without making changes |
+| **worker** | package | Implements tasks from todos, commits with polished messages |
+| **reviewer** | local | Reviews code for quality, security, correctness (Codex 5.4) |
+| **visual-tester** | package | Visual QA — navigates web UIs via Chrome CDP, spots issues, produces reports |
+| **claude-code** | package | Delegates autonomous tasks to Claude Code |
+| **researcher** | local | Deep research using parallel.ai tools + Claude Code for code analysis |
+| **autoresearch** | local | Autonomous experiment loop — runs, measures, and optimizes iteratively |
 
 ## Skills
 
@@ -72,6 +73,8 @@ Loaded on-demand when the context matches.
 | **learn-codebase** | Onboarding to a new project, checking conventions |
 | **session-reader** | Reading and analyzing pi session JSONL files |
 | **skill-creator** | Scaffolding new agent skills |
+| **write-todos** | Writing clear, actionable todos from a plan |
+| **self-improve** | End-of-session retrospective — surfaces improvements and creates todos |
 | **cmux** | Managing terminal sessions via cmux |
 | **presentation-creator** | Creating data-driven presentation slides |
 | **add-mcp-server** | Adding MCP server configurations |
@@ -81,7 +84,6 @@ Loaded on-demand when the context matches.
 | Extension | What it provides |
 |-----------|------------------|
 | **answer/** | `/answer` command + `Ctrl+.` — extracts questions into interactive Q&A UI |
-| **claude-tool/** | `claude` tool — invoke Claude Code for autonomous tasks |
 | **cmux/** | cmux integration — notifications, sidebar, workspace tools |
 | **cost/** | `/cost` command — API cost summary |
 | **execute-command/** | `execute_command` tool — lets the agent self-invoke slash commands |
@@ -104,12 +106,10 @@ Installed via `pi install`, managed in `settings.json`.
 
 | Package | Description |
 |---------|-------------|
-| [pi-interactive-subagents](https://github.com/HazAT/pi-interactive-subagents) | Subagent tools + `/plan`, `/subagent`, `/iterate` commands |
+| [pi-interactive-subagents](https://github.com/HazAT/pi-interactive-subagents) | Subagent tools + agent definitions + `/plan`, `/subagent`, `/iterate` commands |
 | [pi-parallel](https://github.com/HazAT/pi-parallel) | Parallel web search, extract, research, and enrich tools |
 | [pi-smart-sessions](https://github.com/HazAT/pi-smart-sessions) | AI-generated session names |
-| [pi-autoresearch](https://github.com/HazAT/pi-autoresearch) | Autonomous experiment loop with dashboard |
-| [pi-mcp-adapter](https://github.com/nicobailon/pi-mcp-adapter) | MCP server integration |
-| [glimpse](https://github.com/HazAT/glimpse) | Native macOS UI — dialogs, forms, visualizations |
+| [pi-diff-review](https://github.com/badlogic/pi-diff-review) | Interactive diff review UI |
 | [chrome-cdp-skill](https://github.com/pasky/chrome-cdp-skill) | Chrome DevTools Protocol CLI for visual testing |
 
 ---
