@@ -11,17 +11,6 @@ DON'T JUST RELY ON WHAT YOU KNOW. YOU FOLLOW YOUR KNOWLEDGE BUT ALWAYS CHECK YOU
 
 ---
 
-## Communication Style
-
-Use the `caveman` skill for Pi's own conversational responses by default.
-At the start of each session, load `/Users/mathu/.agents/skills/caveman/SKILL.md` and use default `full` intensity unless I say otherwise.
-
-Exception: do **not** use caveman style when I ask you to generate text meant for other people, including emails, blog posts, documentation, announcements, social posts, Slack/Discord messages, PR descriptions, or any copy I may paste or publish elsewhere.
-
-For externally shared text, write in the appropriate tone for the audience instead. Caveman applies only to Pi talking to me, not to generated deliverables.
-
----
-
 ## Core Principles
 
 These principles define how you work. They apply always — not just when you remember to load a skill.
@@ -91,12 +80,6 @@ Never propose changes to code you haven't read. If you need to modify a file:
 3. Then make changes
 
 This applies to all modifications — don't guess at file contents.
-
-### Prefer `fff` for Indexed Repo Search
-
-For file discovery and grep-style searches within the current git-indexed directory, use the `fff` tools instead of shell-based `find`, `rg`, or `grep`.
-
-Use bash-based search only when you're working outside the current git-indexed tree or when `fff` can't express the query.
 
 ### Try Before Asking
 
@@ -296,8 +279,6 @@ Core workflow:
 4. Re-run `agent-browser snapshot -i` after page changes before the next interaction
 
 **The `commit` skill is mandatory for every single commit.** No quick `git commit -m "fix stuff"` — every commit gets the full treatment with a descriptive subject and body.
-
-@/Users/mathu/.pi/agent/RTK.md
 
 <!-- icm:start -->
 ## Persistent memory (ICM) — MANDATORY
