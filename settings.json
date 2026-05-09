@@ -1,5 +1,5 @@
 {
-  "lastChangelogVersion": "0.71.1",
+  "lastChangelogVersion": "0.73.1",
   "defaultProvider": "openai-codex",
   "defaultModel": "gpt-5.5",
   "defaultThinkingLevel": "low",
@@ -7,7 +7,6 @@
     "git:github.com/nicobailon/pi-mcp-adapter",
     "git:github.com/pasky/chrome-cdp-skill",
     "-git:github.com/HazAT/glimpse",
-    "git:github.com/HazAT/pi-interactive-subagents",
     "-git:github.com/HazAT/pi-autoresearch",
     "git:github.com/HazAT/pi-parallel",
     "git:github.com/badlogic/pi-diff-review",
@@ -20,7 +19,8 @@
     "git:github.com/hiasinho/pi-dumb",
     "git:github.com/nicobailon/pi-powerline-footer",
     "git:github.com/nicobailon/pi-boomerang",
-    "git:github.com/mattleong/pi-code-previews"
+    "git:github.com/mattleong/pi-code-previews",
+    "git:github.com/Mathuv/pi-interactive-subagents"
   ],
   "hideThinkingBlock": false,
   "extensions": [
