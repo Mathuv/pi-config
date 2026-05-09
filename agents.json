@@ -1,0 +1,25 @@
+{
+  "worker": {
+    "model": "openai-codex/gpt-5.4-mini",
+    "thinking": "high",
+    "skills": "karpathy-guidelines"
+  },
+  "worker2": {
+    "model": "opencode-go/deepseek-v4-flash",
+    "thinking": "high",
+    "skills": "karpathy-guidelines"
+  },
+  "scout": {
+    "model": "openai-codex/gpt-5.4-mini",
+    "thinking": "high"
+  },
+  "planner": {
+    "model": "openai-codex/gpt-5.5",
+    "thinking": "high",
+    "skills": "karpathy-guidelines"
+  },
+  "reviewer": {
+    "thinking": "high",
+    "skills": "karpathy-guidelines"
+  }
+}

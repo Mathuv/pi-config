@@ -2,11 +2,7 @@
   "lastChangelogVersion": "0.71.1",
   "defaultProvider": "openai-codex",
   "defaultModel": "gpt-5.5",
-  "defaultThinkingLevel": "high",
-  "enabledModels": [
-    "github-copilot/*",
-    "openai-codex/*"
-  ],
+  "defaultThinkingLevel": "low",
   "packages": [
     "git:github.com/nicobailon/pi-mcp-adapter",
     "git:github.com/pasky/chrome-cdp-skill",

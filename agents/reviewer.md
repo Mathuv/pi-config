@@ -3,7 +3,7 @@ name: reviewer
 description: Code review agent - reviews changes for quality, security, and correctness
 tools: read, bash
 model: openai-codex/gpt-5.4
-thinking: medium
+thinking: high
 spawning: false
 auto-exit: true
 system-prompt: append
@@ -145,6 +145,7 @@ The bar for flagging is HIGH. Ask: "Will this actually cause a real problem?"
 - Logic errors where code doesn't match the plan's intent
 - Missing error handling where errors WILL occur
 - Genuinely confusing code that will cause the next person to introduce bugs
+- Missing test coverage for behavior-changing code — when the task explicitly requests a TDD evidence check (flag as P2, advisory only)
 
 ### Output
 
