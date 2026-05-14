@@ -88,6 +88,7 @@ Loaded on-demand when the context matches.
 | **cost/** | `/cost` command — API cost summary |
 | **execute-command/** | `execute_command` tool — lets the agent self-invoke slash commands |
 | **todos/** | `/todos` command + `todo` tool — file-based todo management |
+| **destructive-confirm/** | Safety gate for destructive `bash`/`write`/`edit` tool calls. See [`extensions/destructive-confirm/README.md`](extensions/destructive-confirm/README.md). |
 
 ## Commands
 
