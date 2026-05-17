@@ -20,7 +20,8 @@
     "git:github.com/nicobailon/pi-powerline-footer",
     "git:github.com/nicobailon/pi-boomerang",
     "git:github.com/mattleong/pi-code-previews",
-    "git:github.com/Mathuv/pi-interactive-subagents"
+    "git:github.com/Mathuv/pi-interactive-subagents",
+    "git:github.com/Mathuv/pi-destructive-confirm"
   ],
   "hideThinkingBlock": false,
   "extensions": [
