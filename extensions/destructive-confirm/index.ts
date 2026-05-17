@@ -14,6 +14,22 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import * as path from "node:path";
 
+// ─── Inherited Disabled-State Env Var ───────────────────────────────────────
+
+const DISABLE_ENV_VAR = "PI_DISABLE_DESTRUCTIVE_CONFIRM";
+
+function isDisabledFromEnv(): boolean {
+  return process.env[DISABLE_ENV_VAR] === "1";
+}
+
+function writeDisabledEnv(disabled: boolean): void {
+  if (disabled) {
+    process.env[DISABLE_ENV_VAR] = "1";
+  } else {
+    delete process.env[DISABLE_ENV_VAR];
+  }
+}
+
 // ─── Risk Types ────────────────────────────────────────────────────────────────
 
 export type RiskCategory = "bash" | "write" | "edit";
@@ -184,7 +200,7 @@ export async function gateToolCall(
 }
 
 export default function destructiveConfirmExtension(pi: ExtensionAPI): void {
-  let enabled = true;
+  let enabled = !isDisabledFromEnv();
   let timeoutEnabled = false;
 
   function updateStatus(ctx: ExtensionContext): void {
@@ -197,14 +213,15 @@ export default function destructiveConfirmExtension(pi: ExtensionAPI): void {
     }
   }
 
-  function toggle(ctx: ExtensionContext): void {
-    enabled = !enabled;
-    if (enabled) {
-      ctx.ui.notify("Destructive confirmation enabled");
-    } else {
-      ctx.ui.notify("Destructive confirmation disabled");
-    }
+  function setEnabled(nextEnabled: boolean, ctx: ExtensionContext): void {
+    enabled = nextEnabled;
+    writeDisabledEnv(!nextEnabled);
     updateStatus(ctx);
+  }
+
+  function toggle(ctx: ExtensionContext): void {
+    setEnabled(!enabled, ctx);
+    ctx.ui.notify(enabled ? "Destructive confirmation enabled" : "Destructive confirmation disabled");
   }
 
   function toggleTimeout(ctx: ExtensionContext): void {
@@ -270,8 +287,7 @@ export default function destructiveConfirmExtension(pi: ExtensionAPI): void {
     }
 
     if ("disableForSession" in result && result.disableForSession) {
-      enabled = false;
-      updateStatus(ctx);
+      setEnabled(false, ctx);
       ctx.ui.notify("Destructive confirmation disabled for this session", "warning");
     }
 

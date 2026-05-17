@@ -1,4 +1,4 @@
-import { describe, it } from "node:test";
+import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import destructiveConfirmExtension, { CONFIRM_TIMEOUT, detectBashRisk, detectPathRisk, gateToolCall, type Risk } from "./index.ts";
 
@@ -440,6 +440,21 @@ void describe("detectPathRisk", () => {
 // ─── Extension Behavior ─────────────────────────────────────────────────────
 
 void describe("destructiveConfirmExtension", () => {
+  // Save/restore env var so no test leaks PI_DISABLE_DESTRUCTIVE_CONFIRM to another
+  let savedEnv: string | undefined;
+
+  beforeEach(() => {
+    savedEnv = process.env.PI_DISABLE_DESTRUCTIVE_CONFIRM;
+  });
+
+  afterEach(() => {
+    if (savedEnv === undefined) {
+      delete process.env.PI_DISABLE_DESTRUCTIVE_CONFIRM;
+    } else {
+      process.env.PI_DISABLE_DESTRUCTIVE_CONFIRM = savedEnv;
+    }
+  });
+
   function createFixture() {
     const commands = new Map<string, (args: string, ctx: any) => Promise<void>>();
     let sessionStartHandler: Function | undefined;
@@ -717,5 +732,81 @@ void describe("destructiveConfirmExtension", () => {
     // Select was called twice and both had no timeout (opts undefined)
     assert.equal(capture.selectCalls, 2);
     assert.equal(capture.opts, undefined);
+  });
+
+  // ─── PI_DISABLE_DESTRUCTIVE_CONFIRM env var inheritance ────────────────
+
+  void describe("env var inheritance", () => {
+    void it("starts disabled when PI_DISABLE_DESTRUCTIVE_CONFIRM=1 is set", async () => {
+      process.env.PI_DISABLE_DESTRUCTIVE_CONFIRM = "1";
+      try {
+        const { sessionStartHandler, setStatusCalls, toolCallHandler, capture, ctx } = createFixture();
+        await sessionStartHandler!({ type: "session_start", reason: "startup" }, ctx);
+
+        // Status shows disabled immediately
+        assert.equal(setStatusCalls.at(-1)!.text, "🔓 DC");
+
+        // A destructive call should not be blocked — bypassed before gate
+        capture.selectResults = ["Allow once"];
+        const result = await toolCallHandler!(
+          { toolName: "bash", input: { command: "rm -rf /" }, toolCallId: "1" },
+          ctx,
+        );
+        assert.equal(result, undefined);
+
+        // Select was never called (gate bypassed by !enabled)
+        assert.equal(capture.selectCalls, 0);
+      } finally {
+        delete process.env.PI_DISABLE_DESTRUCTIVE_CONFIRM;
+      }
+    });
+
+    void it("/dc disable sets PI_DISABLE_DESTRUCTIVE_CONFIRM=1", async () => {
+      delete process.env.PI_DISABLE_DESTRUCTIVE_CONFIRM;
+      try {
+        const { commands, ctx } = createFixture();
+        const dcHandler = commands.get("dc")!;
+        await dcHandler("", ctx);
+
+        assert.equal(process.env.PI_DISABLE_DESTRUCTIVE_CONFIRM, "1");
+      } finally {
+        delete process.env.PI_DISABLE_DESTRUCTIVE_CONFIRM;
+      }
+    });
+
+    void it("/dc re-enable deletes PI_DISABLE_DESTRUCTIVE_CONFIRM", async () => {
+      process.env.PI_DISABLE_DESTRUCTIVE_CONFIRM = "1";
+      try {
+        const { commands, ctx } = createFixture();
+        // Extension starts disabled (from env)
+        const dcHandler = commands.get("dc")!;
+        // First toggle: disabled → enabled
+        await dcHandler("", ctx);
+
+        assert.equal(process.env.PI_DISABLE_DESTRUCTIVE_CONFIRM, undefined);
+      } finally {
+        delete process.env.PI_DISABLE_DESTRUCTIVE_CONFIRM;
+      }
+    });
+
+    void it("dialog disableForSession sets PI_DISABLE_DESTRUCTIVE_CONFIRM=1", async () => {
+      delete process.env.PI_DISABLE_DESTRUCTIVE_CONFIRM;
+      try {
+        const { capture, toolCallHandler, ctx } = createFixture();
+        capture.selectResults = [
+          "Allow and disable protection for this session…",
+          "Yes, allow and disable for session",
+        ];
+
+        await toolCallHandler!(
+          { toolName: "bash", input: { command: "rm -rf /" }, toolCallId: "1" },
+          ctx,
+        );
+
+        assert.equal(process.env.PI_DISABLE_DESTRUCTIVE_CONFIRM, "1");
+      } finally {
+        delete process.env.PI_DISABLE_DESTRUCTIVE_CONFIRM;
+      }
+    });
   });
 });

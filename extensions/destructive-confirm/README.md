@@ -74,6 +74,17 @@ Examples:
 | `/repo` | `../notes.txt` | Confirmation required. |
 | `/repo` | `/tmp/file.txt` | Confirmation required. |
 
+## Environment variable inheritance
+
+When `destructive-confirm` is disabled via `/dc` (or the in-dialog "allow and disable" flow), the `PI_DISABLE_DESTRUCTIVE_CONFIRM` environment variable is set to `1` in the current Pi process. This allows Pi subagents launched via `subagent()` (from `pi-interactive-subagents`) to inherit the disabled state, because the child process receives the parent's environment.
+
+- **`PI_DISABLE_DESTRUCTIVE_CONFIRM=1`** — start the extension with protection disabled.
+- If the extension starts without this env var (or with any value other than `1`), protection defaults to enabled.
+- `/dc` disable protection → sets `PI_DISABLE_DESTRUCTIVE_CONFIRM=1` for future child processes.
+- `/dc` re-enable protection → deletes `PI_DISABLE_DESTRUCTIVE_CONFIRM` for future child processes.
+- The dialog `disableForSession` flow also sets `PI_DISABLE_DESTRUCTIVE_CONFIRM=1`.
+- Re-running `/reload` respects the current `process.env.PI_DISABLE_DESTRUCTIVE_CONFIRM`.
+
 ## Installation
 
 Install this extension in a Pi agent config directory:
