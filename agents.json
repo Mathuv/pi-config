@@ -1,24 +1,20 @@
 {
   "worker": {
-    "model": "openai-codex/gpt-5.4-mini",
-    "thinking": "high",
-    "skills": "karpathy-guidelines"
-  },
-  "worker2": {
     "model": "opencode-go/deepseek-v4-flash",
-    "thinking": "high",
+    "thinking": "xhigh",
     "skills": "karpathy-guidelines"
   },
   "scout": {
-    "model": "openai-codex/gpt-5.4-mini",
+    "model": "opencode-go/deepseek-v4-flash",
     "thinking": "high"
   },
   "planner": {
-    "model": "openai-codex/gpt-5.5",
-    "thinking": "high",
-    "skills": "karpathy-guidelines"
+    "model": "openai-codex/gpt-5.3-codex",
+    "thinking": "xhigh",
+    "skills": "grill-with-docs,karpathy-guidelines"
   },
   "reviewer": {
+    "model": "openai-codex/gpt-5.3-codex",
     "thinking": "high",
     "skills": "karpathy-guidelines"
   }
