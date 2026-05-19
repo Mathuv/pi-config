@@ -3,8 +3,7 @@ name: commit
 description: "Read this skill before making git commits"
 ---
 
-Create a git commit for the current changes using Conventional Commits format with a **polished, highly descriptive** message.
-If there are commit hooks - do not skip them, it's your responsability to leave things better than they were.
+Create a git commit for the current changes using a concise Conventional Commits-style subject.
 
 ## Format
 
@@ -16,7 +15,7 @@ If there are commit hooks - do not skip them, it's your responsability to leave 
 
 ## Notes
 
-- Body is **strongly encouraged** — always include one unless the change is trivially obvious (e.g., fixing a typo). The body should explain **what** changed, **why** it changed, the approach taken, and any notable decisions. A reader of `git log` should understand the change without looking at the diff.
+- Body is OPTIONAL. If needed, add a blank line after the subject and write short paragraphs.
 - Do NOT include breaking-change markers or footers.
 - Do NOT add sign-offs (no `Signed-off-by`).
 - Only commit; do NOT push.
