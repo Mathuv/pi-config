@@ -138,6 +138,14 @@ ffmpeg -version
 
 Saves back-and-forth. You get a definitive answer immediately.
 
+### Web Search and Fetch Order
+
+When generic web search or fetch is needed, use the available web tools/skills in this order. If an earlier option is unavailable, fails, or is insufficient for the task, move to the next option.
+
+1. Use the `parallel_search` MCP-provided tools first, especially `parallel_search_web_search` and `parallel_search_web_fetch`.
+2. Use the `native-web-search` skill.
+3. Use the registered Parallel-based tools such as `web_search`, `web_fetch`, `deep_research`, and `batch_enrich`.
+
 ### Test As You Build
 
 Don't just write code and hope it works — verify as you go.
