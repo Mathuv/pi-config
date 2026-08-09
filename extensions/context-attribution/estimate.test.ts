@@ -112,3 +112,22 @@ test("keeps the runtime digest out of report data and correlates default digests
   assert.equal(JSON.stringify(report).includes(first), false);
   assert.equal(JSON.stringify(report).includes("SAFE_FIXTURE_ONLY"), false);
 });
+
+test("detects URLs after cleaning leading controls and spaces", () => {
+  assert.equal(sanitizeLabel("\thttps://user:pass@example.test/a?q=secret#x"), "https://example.test/a");
+  assert.equal(sanitizeLabel("   https://user:pass@example.test/a?q=secret#x"), "https://example.test/a");
+  assert.doesNotMatch(sanitizeLabel("\thttps://user:pass@example.test/a?q=secret#x"), /user:pass|\?q=secret|#x/);
+});
+
+test("redacts Windows root-relative absolute paths", () => {
+  const label = sanitizeLabel("\\Users\\alice\\secret.txt");
+  assert.match(label, /^<external>\/secret\.txt$/);
+  assert.doesNotMatch(label, /alice|secret|Users|\\/);
+});
+
+test("keeps image estimates finite for finite counts", () => {
+  const result = estimateImageCharacters(Number.MAX_VALUE);
+  assert.equal(Number.isFinite(result), true);
+  assert.equal(result >= 0, true);
+  assert.equal(result, 0);
+});
