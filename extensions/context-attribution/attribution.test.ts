@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createHmac } from "node:crypto";
+import { formatSkillsForPrompt as publicFormatSkillsForPrompt } from "@earendil-works/pi-coding-agent";
 import type { Skill, SlashCommandInfo, ToolInfo } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { attributeContext, classifyPromptSource, formatSkillsForPrompt, keyedDigest, matchSkillPathDigest } from "./attribution.ts";
@@ -656,6 +657,33 @@ test("preserves skill-prompt attribution through tool-loop requests with a keyed
   assert.equal(byKey.get("msg:tool-result")!.itemCount.value, 2);
 });
 
+test("a repeated prompt digest resolves to the current match, not an older match", () => {
+  const promptText = "build the project now";
+  const digestKey = "runtime-only-test-key";
+  const currentPromptDigest = createHmac("sha256", digestKey).update(promptText).digest("hex");
+  const messages = [
+    { role: "user", content: promptText, timestamp: 1 },
+    { role: "user", content: promptText, timestamp: 2 },
+  ] as unknown as AgentMessage[];
+  const rows = attributeContext({
+    system: emptySystem(),
+    messages,
+    promptSource: { kind: "skill", name: "build" },
+    currentPromptDigest,
+    digestKey,
+    activeTools: [],
+    allTools: [],
+  });
+  const byKey = rowMap(rows);
+  assert.ok(byKey.has("msg:skill-prompt"), "the current repeated prompt must stay attributed as the skill prompt");
+  assert.equal(byKey.get("msg:skill-prompt")!.label, "Skill: build");
+  assert.equal(byKey.get("msg:skill-prompt")!.characters.value, promptText.length);
+  assert.equal(byKey.get("msg:skill-prompt")!.itemCount.value, 1);
+  assert.ok(byKey.has("msg:user"), "the older identical prompt must stay plain user history");
+  assert.equal(byKey.get("msg:user")!.characters.value, promptText.length);
+  assert.ok(!byKey.has("msg:user-unattributed"), "no user message may be mislabeled after the current prompt");
+});
+
 test("preserves prompt-template attribution through tool-loop requests", () => {
   const promptText = "design the module";
   const digestKey = "runtime-only-test-key";
@@ -723,12 +751,28 @@ test("core-inserted guidelines cannot be claimed by the supplied guideline row",
   assert.ok(remainder.characters.value! >= bashGuideline.length, "the core guideline remains in the unattributed remainder");
 });
 
-test("a supplied copy of an always-included core guideline is not claimed", () => {
-  const options = { cwd: CWD, promptGuidelines: ["Be concise in your responses"] };
+test("a supplied always-included guideline owns its span in Pi's insertion order", () => {
+  const supplied = "Be concise in your responses";
+  const options = { cwd: CWD, selectedTools: ["read"], promptGuidelines: [supplied] };
   const prompt = buildPromptFixture(options);
   const rows = attributeContext({ system: { systemPrompt: prompt, options, matchesCurrent: true }, messages: [], activeTools: [], allTools: [] });
   const byKey = rowMap(rows);
-  assert.ok(!byKey.has("system:guidelines"), "an always-included core guideline must stay unclaimed");
+  const guidelines = byKey.get("system:guidelines");
+  assert.ok(guidelines, "a supplied always-included guideline must be claimed");
+  assert.equal(guidelines!.characters.value, supplied.length);
+  assert.equal(guidelines!.itemCount.value, 1);
+  const claimed = rows.filter((row) => row.key !== "system:remainder").reduce((sum, row) => sum + (row.characters.value ?? 0), 0);
+  const remainder = byKey.get("system:remainder")!;
+  assert.equal(remainder.characters.value, prompt.length - claimed);
+  assert.ok(remainder.characters.value! < prompt.length - supplied.length, "the supplied span must not sit in the remainder");
+});
+
+test("the facade uses the public skill formatter export from the pi package", () => {
+  assert.equal(
+    formatSkillsForPrompt,
+    publicFormatSkillsForPrompt,
+    "attribution.ts must use the public formatSkillsForPrompt export instead of a local copy",
+  );
 });
 
 test("matches a keyed skill-path digest and rejects mismatched paths", () => {

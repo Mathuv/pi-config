@@ -1,0 +1,9 @@
+{
+  "name": "context-attribution-tests",
+  "private": true,
+  "type": "module",
+  "description": "Standalone test dependency boundary for the context-attribution extension. Pi provides @earendil-works/pi-coding-agent at runtime via extension-loader aliases; this local devDependency lets the focused tests resolve the same public exports on a portable checkout.",
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "0.83.0"
+  }
+}
