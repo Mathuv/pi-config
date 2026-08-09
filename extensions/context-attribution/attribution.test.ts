@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createHmac } from "node:crypto";
-import { formatSkillsForPrompt } from "@earendil-works/pi-coding-agent";
 import type { Skill, SlashCommandInfo, ToolInfo } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import { attributeContext, classifyPromptSource } from "./attribution.ts";
+import { attributeContext, classifyPromptSource, formatSkillsForPrompt, keyedDigest, matchSkillPathDigest } from "./attribution.ts";
 import type { SystemAttributionInput } from "./attribution.ts";
 
 const CWD = "/Users/alice/project";
@@ -732,22 +731,16 @@ test("a supplied copy of an always-included core guideline is not claimed", () =
   assert.ok(!byKey.has("system:guidelines"), "an always-included core guideline must stay unclaimed");
 });
 
-test("matches a keyed skill-path digest and rejects mismatched paths", async () => {
-  const mod = await import("./attribution.ts") as {
-    keyedDigest?: (value: string, key: string) => string;
-    matchSkillPathDigest?: (path: string, key: string | undefined, digests: ReadonlyMap<string, string> | undefined) => string | undefined;
-  };
-  assert.equal(typeof mod.keyedDigest, "function", "keyedDigest must be exported");
-  assert.equal(typeof mod.matchSkillPathDigest, "function", "matchSkillPathDigest must be exported");
+test("matches a keyed skill-path digest and rejects mismatched paths", () => {
   const key = "runtime-only-test-key";
   const path = "/skills/commit/SKILL.md";
-  const digest = mod.keyedDigest!(path, key);
+  const digest = keyedDigest(path, key);
   assert.match(digest, /^[a-f0-9]{64}$/);
-  assert.equal(mod.keyedDigest!(path, key), digest);
-  assert.notEqual(mod.keyedDigest!(path, key + "-other"), digest);
+  assert.equal(keyedDigest(path, key), digest);
+  assert.notEqual(keyedDigest(path, key + "-other"), digest);
   const matches = new Map([[digest, "commit"]]);
-  assert.equal(mod.matchSkillPathDigest!(path, key, matches), "commit");
-  assert.equal(mod.matchSkillPathDigest!("/other/file.md", key, matches), undefined);
-  assert.equal(mod.matchSkillPathDigest!(path, undefined, matches), undefined);
-  assert.equal(mod.matchSkillPathDigest!(path, key, undefined), undefined);
+  assert.equal(matchSkillPathDigest(path, key, matches), "commit");
+  assert.equal(matchSkillPathDigest("/other/file.md", key, matches), undefined);
+  assert.equal(matchSkillPathDigest(path, undefined, matches), undefined);
+  assert.equal(matchSkillPathDigest(path, key, undefined), undefined);
 });

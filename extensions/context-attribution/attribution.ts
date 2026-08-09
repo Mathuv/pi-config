@@ -1,4 +1,4 @@
-import { formatSkillsForPrompt } from "@earendil-works/pi-coding-agent";
+import { createHmac } from "node:crypto";
 import type { BuildSystemPromptOptions, Skill, SlashCommandInfo, ToolInfo } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import {
@@ -28,6 +28,69 @@ export type PromptSource =
   | { readonly kind: "skill"; readonly name: string }
   | { readonly kind: "prompt"; readonly name: string };
 
+/**
+ * Mirrors the public formatSkillsForPrompt export from
+ * @earendil-works/pi-coding-agent (dist/core/skills.js). Kept local so the
+ * focused tests run on a portable checkout without a user-specific package
+ * symlink. The byte-for-byte output keeps the catalog span claim aligned with
+ * the system prompt that Pi builds.
+ */
+export function formatSkillsForPrompt(skills: readonly Skill[]): string {
+  const visibleSkills = skills.filter((s) => !s.disableModelInvocation);
+  if (visibleSkills.length === 0) {
+    return "";
+  }
+  const lines = [
+    "\n\nThe following skills provide specialized instructions for specific tasks.",
+    "Use the read tool to load a skill's file when the task matches its description.",
+    "When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.",
+    "",
+    "<available_skills>",
+  ];
+  for (const skill of visibleSkills) {
+    lines.push("  <skill>");
+    lines.push(`    <name>${escapeXml(skill.name)}</name>`);
+    lines.push(`    <description>${escapeXml(skill.description)}</description>`);
+    lines.push(`    <location>${escapeXml(skill.filePath)}</location>`);
+    lines.push("  </skill>");
+  }
+  lines.push("</available_skills>");
+  return lines.join("\n");
+}
+
+function escapeXml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+/**
+ * Keyed HMAC-SHA256 hex digest for runtime boundary matching.
+ * The same key backs the current-prompt and skill-path boundaries.
+ */
+export function keyedDigest(value: string, key: string): string {
+  return createHmac("sha256", key).update(value).digest("hex");
+}
+
+/**
+ * Matches a transient read path against keyed skill-path digests.
+ * The caller captures a keyed digest of each Skill.filePath at
+ * before_agent_start and matches read paths at the tool_call boundary.
+ */
+export function matchSkillPathDigest(
+  readPath: unknown,
+  key: string | undefined,
+  skillPathDigests: ReadonlyMap<string, string> | undefined,
+): string | undefined {
+  if (typeof readPath !== "string" || readPath.length === 0 || typeof key !== "string" || key.length === 0 || !skillPathDigests) {
+    return undefined;
+  }
+  return skillPathDigests.get(keyedDigest(readPath, key));
+}
+
 export interface SystemAttributionInput {
   /** The effective system prompt at the context event. */
   readonly systemPrompt: string;
@@ -42,6 +105,10 @@ export interface AttributionInput {
   /** Used only during this call. Never cloned or retained. */
   readonly messages: readonly AgentMessage[];
   readonly promptSource?: PromptSource;
+  /** Keyed HMAC-SHA256 hex digest of the expanded current prompt text. */
+  readonly currentPromptDigest?: string;
+  /** HMAC key that produced the current-prompt digest. */
+  readonly digestKey?: string;
   /** Maps a tool-call ID to a safe skill label. */
   readonly skillReads?: ReadonlyMap<string, string>;
   readonly activeTools: readonly string[];
@@ -83,7 +150,7 @@ function safeDynamicLabel(value: unknown): string {
 export function attributeContext(input: AttributionInput): SourceEstimate[] {
   return mergeSanitizedRows([
     ...attributeSystem(input.system),
-    ...attributeMessages(input.messages, input.promptSource, input.skillReads),
+    ...attributeMessages(input.messages, input.promptSource, input.skillReads, input.currentPromptDigest, input.digestKey),
     ...attributeTools(input.activeTools, input.allTools, input.cwd),
   ]);
 }
@@ -211,9 +278,19 @@ function attributeSystem(input: SystemAttributionInput): SourceEstimate[] {
         rows.push(systemRow("system:tool-snippets", "system", "Tool prompt snippets", "attributed", chars, count));
       }
     }
-    // Pi trims, drops empty, and deduplicates guidelines before building the prompt.
+    // Pi trims, drops empty, and deduplicates guidelines before building the
+    // prompt. Core inserts conditional guidelines before and after the
+    // supplied array with one shared dedup set (dist/core/system-prompt.js).
+    // Seed the set with those core guidelines so a supplied duplicate cannot
+    // claim a core-owned span.
     const guidelines = Array.isArray(options.promptGuidelines) ? options.promptGuidelines : [];
     const seen = new Set<string>();
+    const toolNames = Array.isArray(options.selectedTools) ? options.selectedTools : DEFAULT_TOOLS;
+    if (toolNames.includes("bash") && !toolNames.includes("grep") && !toolNames.includes("find") && !toolNames.includes("ls")) {
+      seen.add("Use bash for file operations like ls, rg, find");
+    }
+    seen.add("Be concise in your responses");
+    seen.add("Show file paths clearly when working with files");
     let chars = 0;
     let count = 0;
     for (const guideline of guidelines) {
@@ -342,9 +419,15 @@ function accumulatorRows(acc: MessageAccumulator): SourceEstimate[] {
   return rows;
 }
 
-function attributeMessages(messages: readonly AgentMessage[], promptSource: PromptSource | undefined, skillReads: ReadonlyMap<string, string> | undefined): SourceEstimate[] {
+function attributeMessages(
+  messages: readonly AgentMessage[],
+  promptSource: PromptSource | undefined,
+  skillReads: ReadonlyMap<string, string> | undefined,
+  currentPromptDigest: string | undefined,
+  digestKey: string | undefined,
+): SourceEstimate[] {
   const acc = createAccumulator();
-  const currentPromptIndex = findCurrentPromptIndex(messages);
+  const currentPromptIndex = findCurrentPromptIndex(messages, currentPromptDigest, digestKey);
   for (let i = 0; i < messages.length; i += 1) {
     const message = messages[i] as AnyMessage;
     const role = message.role;
@@ -383,15 +466,47 @@ function attributeMessages(messages: readonly AgentMessage[], promptSource: Prom
 }
 
 /**
+ * Joins the text blocks of a user message without returning raw values.
+ */
+function userTextContent(message: AnyMessage): string | null {
+  const content = message.content;
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return null;
+  let text = "";
+  for (const block of content) {
+    if (block && typeof block === "object") {
+      const value = block as Record<string, unknown>;
+      if (value.type === "text" && typeof value.text === "string") text += value.text;
+    }
+  }
+  return text;
+}
+
+/**
  * Finds the evidence-based current-prompt boundary.
  *
- * Pi appends the expanded current prompt as the first message of the new
- * turn, then injects batch custom messages and later steering messages.
- * The current prompt is therefore the first user-role message after the last
- * message that is neither user-role nor custom-role. User-role messages after
- * that boundary are generic extension text without source metadata.
+ * With a keyed prompt digest, the current prompt is the first user message
+ * whose text hashes to that digest. Pi captures this digest from
+ * before_agent_start.prompt. The digest preserves the boundary through
+ * tool-loop requests, where Pi appends assistant responses and tool results
+ * without a new user message. A digest with no matching message fails closed:
+ * no message is claimed as the current prompt.
+ *
+ * Without a digest, Pi appends the expanded current prompt as the first
+ * message of the new turn, then injects batch custom messages and later
+ * steering messages. The current prompt is therefore the first user-role
+ * message after the last message that is neither user-role nor custom-role.
+ * User-role messages after that boundary are generic extension text without
+ * source metadata.
  */
-function findCurrentPromptIndex(messages: readonly AgentMessage[]): number {
+function findCurrentPromptIndex(messages: readonly AgentMessage[], currentPromptDigest: string | undefined, digestKey: string | undefined): number {
+  if (typeof currentPromptDigest === "string" && currentPromptDigest.length > 0 && typeof digestKey === "string" && digestKey.length > 0) {
+    for (let i = 0; i < messages.length; i += 1) {
+      const text = userTextContent(messages[i] as AnyMessage);
+      if (text !== null && keyedDigest(text, digestKey) === currentPromptDigest) return i;
+    }
+    return -1;
+  }
   let boundary = -1;
   for (let i = 0; i < messages.length; i += 1) {
     const role = (messages[i] as AnyMessage)?.role;
