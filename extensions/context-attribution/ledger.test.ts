@@ -195,6 +195,25 @@ test("a provider observation without a draft only increments the excluded counte
   assert.equal(report.aggregate.eligibleRequests, 1);
 });
 
+test("a provider call after agent_settled is excluded and cannot mutate a stale pending draft", () => {
+  const ledger = createAttributionLedger();
+  startRun(ledger);
+  ledger.observeContext([sourceRow("system:remainder", 100)]);
+  ledger.observeAgentSettled();
+  ledger.observeProviderRequest(SAFE_MODEL);
+  const report = ledger.snapshot();
+  assert.equal(report.aggregate.excludedProviderCalls, 1);
+  assert.equal(report.latest?.status, "pending");
+  assert.equal(report.latest?.providerRequest, "unavailable");
+  assert.deepEqual(report.latest?.model, {
+    provider: "unavailable",
+    api: "unavailable",
+    model: "unavailable",
+    measurement: "unavailable",
+  });
+  assert.equal(report.aggregate.correlationFailures, 0);
+});
+
 test("the ledger API accepts no provider payload parameter", () => {
   const ledger = createAttributionLedger();
   assert.equal(ledger.observeProviderRequest.length, 1);
@@ -299,6 +318,27 @@ test("two context events before finalization mark correlation unavailable", () =
   assert.deepEqual(report.latest?.providerUsage?.input, { value: 100, measurement: "provider-reported" });
 });
 
+test("an ambiguous draft that also fails correlation counts one failure", () => {
+  const withoutProvider = createAttributionLedger();
+  startRun(withoutProvider);
+  withoutProvider.observeContext([sourceRow("system:remainder", 100)]);
+  withoutProvider.observeContext([sourceRow("system:remainder", 200)]);
+  withoutProvider.observeMessageEnd(assistantMessage());
+  let report = withoutProvider.snapshot();
+  assert.equal(report.aggregate.correlationFailures, 1);
+  assert.equal(report.latest?.correlation, "unavailable");
+
+  const withMismatch = createAttributionLedger();
+  startRun(withMismatch);
+  withMismatch.observeContext([sourceRow("system:remainder", 100)]);
+  withMismatch.observeContext([sourceRow("system:remainder", 200)]);
+  withMismatch.observeProviderRequest(SAFE_MODEL);
+  withMismatch.observeMessageEnd(assistantMessage({ model: "different-model" }));
+  report = withMismatch.snapshot();
+  assert.equal(report.aggregate.correlationFailures, 1);
+  assert.equal(report.latest?.correlation, "unavailable");
+});
+
 test("a model identity mismatch disables correlation", () => {
   const ledger = createAttributionLedger();
   startRun(ledger);
@@ -374,6 +414,29 @@ test("the tree window suppresses capture and session_tree resets the ledger", ()
   assert.equal(report.latest?.correlation, "recorded");
 });
 
+test("session_tree resets request state without destroying the runtime digest key", () => {
+  const ledger = createAttributionLedger();
+  ledger.observeSessionStart("startup");
+  const key = ledger.getDigestKey();
+  assert.ok(key !== undefined);
+  ledger.observeInput("interactive");
+  ledger.observeAgentStart();
+  ledger.observeContext([sourceRow("system:remainder", 100)]);
+  ledger.observeBeforeTree();
+  ledger.observeTree();
+  let report = ledger.snapshot();
+  assert.equal(report.latest, null);
+  assert.equal(report.aggregate.eligibleRequests, 0);
+  assert.equal(ledger.getDigestKey(), key);
+  ledger.observeInput("interactive");
+  ledger.observeAgentStart();
+  completeRequest(ledger);
+  report = ledger.snapshot();
+  assert.equal(report.latest?.status, "complete");
+  assert.equal(report.latest?.correlation, "recorded");
+  assert.equal(ledger.getDigestKey(), key);
+});
+
 test("switch, fork, reload, and shutdown reset the ledger", () => {
   const boundaries = ["switch", "fork", "reload", "shutdown"] as const;
   for (const boundary of boundaries) {
@@ -402,10 +465,10 @@ test("switch, fork, reload, and shutdown reset the ledger", () => {
     assert.equal(report.aggregate.correlationFailures, 0, boundary);
     assert.deepEqual(report.aggregate.providerUsageTotals.input, { value: null, measurement: "unavailable" }, boundary);
     assert.deepEqual(report.aggregate.estimatedCharacters, {}, boundary);
-    if (boundary === "reload") {
-      assert.match(ledger.getDigestKey() ?? "", /^[a-f0-9]{64}$/, boundary);
-    } else {
+    if (boundary === "shutdown") {
       assert.equal(ledger.getDigestKey(), undefined, boundary);
+    } else {
+      assert.match(ledger.getDigestKey() ?? "", /^[a-f0-9]{64}$/, boundary);
     }
     ledger.observeSessionStart("startup");
     assert.match(ledger.getDigestKey() ?? "", /^[a-f0-9]{64}$/, boundary);
