@@ -69,3 +69,46 @@ test("runtime HMAC digest is separate from report data", async () => {
   assert.equal(JSON.stringify(row).includes("SAFE_FIXTURE_ONLY"), false);
   assert.notEqual(digest, "SAFE_FIXTURE_ONLY");
 });
+
+
+test("normalizes non-finite estimator inputs", () => {
+  assert.equal(estimateTokens(Number.NaN), 0);
+  assert.equal(estimateTokens(Number.POSITIVE_INFINITY), 0);
+  assert.equal(estimateImageCharacters(Number.NaN), 0);
+  assert.equal(estimateImageCharacters(Number.POSITIVE_INFINITY), 0);
+});
+
+test("records provider usage and marks missing fields unavailable", async () => {
+  const { providerUsageRecord } = await import("./estimate.ts");
+  const usage = providerUsageRecord({ input: 0, output: 3, totalTokens: 3 });
+  assert.deepEqual(usage.input, { value: 0, measurement: "provider-reported" });
+  assert.deepEqual(usage.output, { value: 3, measurement: "provider-reported" });
+  assert.deepEqual(usage.cacheRead, { value: null, measurement: "unavailable" });
+  assert.deepEqual(usage.reasoning, { value: null, measurement: "unavailable" });
+});
+
+test("resolves relative paths against the supplied cwd", () => {
+  assert.equal(sanitizePathLabel("src/file.ts", "/Users/alice/project", "/Users/alice"), "$CWD/src/file.ts");
+});
+
+test("redacts Windows absolute paths without exposing the prefix", () => {
+  const label = sanitizePathLabel("C:\\Users\\alice\\private\\file.ts", "C:\\Users\\alice\\project", "C:\\Users\\alice");
+  assert.equal(label, "$HOME/private/file.ts");
+  assert.doesNotMatch(label, /C:|Users|alice/);
+});
+
+test("rejects file URLs and sanitizes opaque URLs", () => {
+  assert.equal(sanitizeUrlLabel("file:///Users/alice/private.txt"), "unavailable");
+  assert.equal(sanitizeLabel("mailto:user@example.test?subject=SAFE_FIXTURE_ONLY#fragment"), "mailto:user@example.test");
+  assert.equal(sanitizeLabel("https://user:pass@example.test/a?query=SAFE_FIXTURE_ONLY#fragment"), "https://example.test/a");
+  assert.equal(sanitizeLabel("https:\u0000//example.test/secret"), "unavailable");
+});
+
+test("keeps the runtime digest out of report data and correlates default digests", async () => {
+  const first = await createRuntimeDigest("SAFE_FIXTURE_ONLY");
+  const second = await createRuntimeDigest("SAFE_FIXTURE_ONLY");
+  assert.equal(first, second);
+  const report = { sources: [{ label: "safe", key: "source" }], digest: undefined };
+  assert.equal(JSON.stringify(report).includes(first), false);
+  assert.equal(JSON.stringify(report).includes("SAFE_FIXTURE_ONLY"), false);
+});
