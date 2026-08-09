@@ -2,6 +2,7 @@ import { formatSkillsForPrompt } from "@earendil-works/pi-coding-agent";
 import type { BuildSystemPromptOptions, Skill, SlashCommandInfo, ToolInfo } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import {
+  MAX_LABEL_LENGTH,
   countJsonCharacters,
   estimateImageCharacters,
   estimateTokens,
@@ -9,6 +10,7 @@ import {
   recordedValue,
   sanitizeLabel,
   sanitizePathLabel,
+  sanitizeUrlLabel,
   unavailableValue,
 } from "./estimate.ts";
 import type { Attribution, SourceCategory, SourceEstimate, WarningCode } from "./types.ts";
@@ -52,6 +54,31 @@ type AnyMessage = { role?: unknown; [key: string]: unknown };
 
 const DEFAULT_TOOLS = ["read", "bash", "edit", "write"];
 
+/** Caps the complete final label or key at the approved limit. */
+function limitLabel(value: string): string {
+  return value.length <= MAX_LABEL_LENGTH ? value : value.slice(0, MAX_LABEL_LENGTH - 1) + "…";
+}
+
+/** True when the value looks like a URL scheme instead of a Windows drive. */
+function looksLikeUrl(value: string): boolean {
+  return /^[A-Za-z][A-Za-z0-9+.-]*:/.test(value) && !/^[A-Za-z]:[\\/]/.test(value);
+}
+
+/**
+ * Facade-level dynamic label sanitizer.
+ *
+ * Removes control characters before URL and path detection. This prevents a
+ * control-bearing URL from bypassing sanitization and leaking credentials,
+ * queries, or fragments into a returned label or key.
+ */
+function safeDynamicLabel(value: unknown): string {
+  if (typeof value !== "string") return "unavailable";
+  const cleaned = value.replace(/[\u0000-\u001f\u007f-\u009f]+/g, "").trim();
+  if (!cleaned) return "unavailable";
+  if (looksLikeUrl(cleaned)) return sanitizeUrlLabel(cleaned);
+  return sanitizeLabel(cleaned);
+}
+
 /** One public facade that returns stable sanitized source rows. */
 export function attributeContext(input: AttributionInput): SourceEstimate[] {
   return mergeSanitizedRows([
@@ -74,9 +101,9 @@ export function classifyPromptSource(inputText: string, commands: readonly Slash
   if (command) {
     if (command.source === "skill") {
       const name = raw.startsWith("skill:") ? raw.slice("skill:".length) : raw;
-      return { kind: "skill", name: sanitizeLabel(name) };
+      return { kind: "skill", name: safeDynamicLabel(name) };
     }
-    if (command.source === "prompt") return { kind: "prompt", name: sanitizeLabel(raw) };
+    if (command.source === "prompt") return { kind: "prompt", name: safeDynamicLabel(raw) };
   }
   return { kind: "plain" };
 }
@@ -166,32 +193,38 @@ function attributeSystem(input: SystemAttributionInput): SourceEstimate[] {
   }
 
   if (!hasCustom) {
+    // Pi shows a snippet only for a selected tool.
     const snippets = options.toolSnippets;
     if (snippets && typeof snippets === "object") {
-      const names = Object.keys(snippets);
-      if (names.length > 0) {
-        let chars = 0;
-        let count = 0;
-        for (const name of names) {
-          const snippet = (snippets as Record<string, unknown>)[name];
-          if (typeof snippet === "string" && snippet.length > 0) {
-            chars += claimant.claim(snippet);
-            count += 1;
-          }
-        }
-        rows.push(systemRow("system:tool-snippets", "system", "Tool prompt snippets", "attributed", chars, count));
-      }
-    }
-    const guidelines = Array.isArray(options.promptGuidelines) ? options.promptGuidelines : [];
-    if (guidelines.length > 0) {
+      const tools = Array.isArray(options.selectedTools) ? options.selectedTools : DEFAULT_TOOLS;
       let chars = 0;
       let count = 0;
-      for (const guideline of guidelines) {
-        if (typeof guideline === "string" && guideline.trim().length > 0) {
-          chars += claimant.claim(guideline);
+      for (const name of tools) {
+        if (typeof name !== "string") continue;
+        const snippet = (snippets as Record<string, unknown>)[name];
+        if (typeof snippet === "string" && snippet.length > 0) {
+          chars += claimant.claim(snippet);
           count += 1;
         }
       }
+      if (count > 0) {
+        rows.push(systemRow("system:tool-snippets", "system", "Tool prompt snippets", "attributed", chars, count));
+      }
+    }
+    // Pi trims, drops empty, and deduplicates guidelines before building the prompt.
+    const guidelines = Array.isArray(options.promptGuidelines) ? options.promptGuidelines : [];
+    const seen = new Set<string>();
+    let chars = 0;
+    let count = 0;
+    for (const guideline of guidelines) {
+      if (typeof guideline !== "string") continue;
+      const normalized = guideline.trim();
+      if (normalized.length === 0 || seen.has(normalized)) continue;
+      seen.add(normalized);
+      chars += claimant.claim(normalized);
+      count += 1;
+    }
+    if (count > 0) {
       rows.push(systemRow("system:guidelines", "system", "Prompt guidelines", "attributed", chars, count));
     }
   }
@@ -311,16 +344,13 @@ function accumulatorRows(acc: MessageAccumulator): SourceEstimate[] {
 
 function attributeMessages(messages: readonly AgentMessage[], promptSource: PromptSource | undefined, skillReads: ReadonlyMap<string, string> | undefined): SourceEstimate[] {
   const acc = createAccumulator();
-  let currentPromptIndex = -1;
-  for (let i = 0; i < messages.length; i += 1) {
-    if ((messages[i] as AnyMessage)?.role === "user") currentPromptIndex = i;
-  }
+  const currentPromptIndex = findCurrentPromptIndex(messages);
   for (let i = 0; i < messages.length; i += 1) {
     const message = messages[i] as AnyMessage;
     const role = message.role;
     switch (role) {
       case "user":
-        visitUser(message, i === currentPromptIndex, promptSource, acc);
+        visitUser(message, i === currentPromptIndex, currentPromptIndex >= 0 && i > currentPromptIndex, promptSource, acc);
         break;
       case "assistant":
         visitAssistant(message, acc);
@@ -352,12 +382,35 @@ function attributeMessages(messages: readonly AgentMessage[], promptSource: Prom
   return accumulatorRows(acc);
 }
 
-function visitUser(message: AnyMessage, isCurrent: boolean, promptSource: PromptSource | undefined, acc: MessageAccumulator): void {
+/**
+ * Finds the evidence-based current-prompt boundary.
+ *
+ * Pi appends the expanded current prompt as the first message of the new
+ * turn, then injects batch custom messages and later steering messages.
+ * The current prompt is therefore the first user-role message after the last
+ * message that is neither user-role nor custom-role. User-role messages after
+ * that boundary are generic extension text without source metadata.
+ */
+function findCurrentPromptIndex(messages: readonly AgentMessage[]): number {
+  let boundary = -1;
+  for (let i = 0; i < messages.length; i += 1) {
+    const role = (messages[i] as AnyMessage)?.role;
+    if (role !== "user" && role !== "custom") boundary = i;
+  }
+  for (let i = boundary + 1; i < messages.length; i += 1) {
+    if ((messages[i] as AnyMessage)?.role === "user") return i;
+  }
+  return -1;
+}
+
+function visitUser(message: AnyMessage, isCurrent: boolean, isAfterCurrent: boolean, promptSource: PromptSource | undefined, acc: MessageAccumulator): void {
   const chars = contentLength(message.content, acc);
   if (isCurrent && promptSource?.kind === "skill") {
-    addRow(acc, "msg:skill-prompt", "skills", `Skill: ${sanitizeLabel(promptSource.name)}`, "attributed", chars, 1);
+    addRow(acc, "msg:skill-prompt", "skills", limitLabel(`Skill: ${safeDynamicLabel(promptSource.name)}`), "attributed", chars, 1);
   } else if (isCurrent && promptSource?.kind === "prompt") {
-    addRow(acc, "msg:prompt-template", "prompts", `Prompt template: ${sanitizeLabel(promptSource.name)}`, "attributed", chars, 1);
+    addRow(acc, "msg:prompt-template", "prompts", limitLabel(`Prompt template: ${safeDynamicLabel(promptSource.name)}`), "attributed", chars, 1);
+  } else if (isAfterCurrent) {
+    addRow(acc, "msg:user-unattributed", "conversation", "User text without source metadata", "unattributed", chars, 1);
   } else {
     addRow(acc, "msg:user", "conversation", "User history", "attributed", chars, 1);
   }
@@ -396,8 +449,8 @@ function visitToolResult(message: AnyMessage, skillReads: ReadonlyMap<string, st
   const toolCallId = typeof message.toolCallId === "string" ? message.toolCallId : "";
   const matchedSkill = toolCallId.length > 0 ? skillReads?.get(toolCallId) : undefined;
   if (matchedSkill) {
-    const name = sanitizeLabel(matchedSkill);
-    addRow(acc, `msg:skill-read:${name}`, "skills", `Skill body: ${name}`, "attributed", chars, 1);
+    const name = safeDynamicLabel(matchedSkill);
+    addRow(acc, limitLabel(`msg:skill-read:${name}`), "skills", limitLabel(`Skill body: ${name}`), "attributed", chars, 1);
   } else {
     addRow(acc, "msg:tool-result", "tool-result", "Tool results", "attributed", chars, 1);
   }
@@ -415,8 +468,8 @@ function visitCustom(message: AnyMessage, acc: MessageAccumulator): void {
   } else if (customType === "context-prune-summary") {
     addRow(acc, "msg:prune-summary", "summary", "Context-prune summary", "unattributed", chars, 1);
   } else {
-    const safe = sanitizeLabel(customType.length > 0 ? customType : "unavailable");
-    addRow(acc, `msg:custom:${safe}`, "custom", `Extension: ${safe}`, "attributed", chars, 1);
+    const safe = safeDynamicLabel(customType.length > 0 ? customType : "unavailable");
+    addRow(acc, limitLabel(`msg:custom:${safe}`), "custom", limitLabel(`Extension: ${safe}`), "attributed", chars, 1);
   }
 }
 
@@ -450,6 +503,9 @@ function contentLength(content: unknown, acc: MessageAccumulator): number {
 // Tool definitions
 // ---------------------------------------------------------------------------
 
+const TOOL_SCOPE_VALUES = new Set(["user", "project", "temporary"]);
+const TOOL_ORIGIN_VALUES = new Set(["package", "top-level"]);
+
 function attributeTools(activeTools: readonly string[], allTools: readonly ToolInfo[], cwd: string | undefined): SourceEstimate[] {
   const byName = new Map<string, ToolInfo>();
   for (const tool of allTools ?? []) {
@@ -459,24 +515,23 @@ function attributeTools(activeTools: readonly string[], allTools: readonly ToolI
   for (const name of activeTools ?? []) {
     const tool = byName.get(name);
     if (!tool) continue;
-    const label = toolSourceLabel(tool.sourceInfo, cwd);
+    const provenance = toolProvenance(tool.sourceInfo, cwd);
     const chars = countJsonCharacters({ name: tool.name, description: tool.description, parameters: tool.parameters });
-    const key = `tools:${label}`;
-    let group = groups.get(key);
+    let group = groups.get(provenance.key);
     if (!group) {
-      group = { label, chars: 0, count: 0, failed: false };
-      groups.set(key, group);
+      group = { label: provenance.label, chars: 0, count: 0, failed: false };
+      groups.set(provenance.key, group);
     }
     group.count += 1;
     if (chars === null) group.failed = true;
     else group.chars += chars;
   }
   const rows: SourceEstimate[] = [];
-  for (const group of groups.values()) {
+  for (const [key, group] of groups) {
     rows.push({
-      key: `tools:${group.label}`,
+      key,
       category: "tools",
-      label: `Tools: ${group.label}`,
+      label: group.label,
       attribution: "attributed",
       characters: group.failed ? unavailableValue() : recordedValue(group.chars),
       tokens: group.failed ? unavailableValue() : estimatedValue(estimateTokens(group.chars)),
@@ -485,6 +540,19 @@ function attributeTools(activeTools: readonly string[], allTools: readonly ToolI
     });
   }
   return rows;
+}
+
+/** Builds a safe provenance key and label from scope, origin, and source. */
+function toolProvenance(sourceInfo: ToolInfo["sourceInfo"] | undefined, cwd: string | undefined): { key: string; label: string } {
+  if (!sourceInfo) return { key: "tools:pi built-in", label: "Tools: pi built-in" };
+  if (sourceInfo.source === "builtin") return { key: "tools:pi built-in", label: "Tools: pi built-in" };
+  if (sourceInfo.source === "sdk") return { key: "tools:pi sdk", label: "Tools: pi sdk" };
+  const scope = typeof sourceInfo.scope === "string" && TOOL_SCOPE_VALUES.has(sourceInfo.scope) ? sourceInfo.scope : "unknown";
+  const origin = typeof sourceInfo.origin === "string" && TOOL_ORIGIN_VALUES.has(sourceInfo.origin) ? sourceInfo.origin : "unknown";
+  const source = toolSourceLabel(sourceInfo, cwd);
+  const key = limitLabel(`tools:${scope}:${origin}:${source}`);
+  const label = limitLabel(`Tools: ${scope}/${origin}/${source}`);
+  return { key, label };
 }
 
 function toolSourceLabel(sourceInfo: ToolInfo["sourceInfo"] | undefined, cwd: string | undefined): string {
@@ -499,8 +567,17 @@ function toolSourceLabel(sourceInfo: ToolInfo["sourceInfo"] | undefined, cwd: st
         : "";
   if (!raw) return "unavailable";
   const match = /^<([^:>]+):([^>]+)>/.exec(raw);
-  if (match) return sanitizeLabel(`${match[1]}/${match[2]}`);
-  return sanitizePathLabel(raw, cwd ?? process.cwd());
+  if (match) {
+    // Sanitize the wrapped value before any fixed prefix so URL and path
+    // detection can still see credentials, queries, and fragments.
+    const scheme = safeDynamicLabel(match[1]);
+    const value = safeDynamicLabel(match[2]);
+    if (scheme === "unavailable" || value === "unavailable") return "unavailable";
+    return limitLabel(`${scheme}/${value}`);
+  }
+  const cleaned = raw.replace(/[\u0000-\u001f\u007f-\u009f]+/g, "").trim();
+  if (looksLikeUrl(cleaned)) return limitLabel(sanitizeUrlLabel(cleaned));
+  return limitLabel(sanitizePathLabel(raw, cwd ?? process.cwd()));
 }
 
 // ---------------------------------------------------------------------------

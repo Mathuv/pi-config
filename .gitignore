@@ -26,3 +26,9 @@ extensions/*/node_modules/
 .DS_Store
 Thumbs.db
 tmp/
+
+# The context-attribution focused tests import the globally installed pi package.
+# The committed symlink resolves it for node --test without a manual install step.
+!extensions/context-attribution/node_modules/
+!extensions/context-attribution/node_modules/@earendil-works/
+!extensions/context-attribution/node_modules/@earendil-works/pi-coding-agent
