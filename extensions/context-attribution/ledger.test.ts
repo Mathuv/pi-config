@@ -185,7 +185,8 @@ test("a provider observation without a draft only increments the excluded counte
   assert.equal(report.aggregate.eligibleRequests, 0);
   assert.equal(report.aggregate.correlationFailures, 0);
 
-  startRun(ledger);
+  ledger.observeInput("interactive");
+  ledger.observeAgentStart();
   completeRequest(ledger);
   ledger.observeAgentSettled();
   ledger.observeProviderRequest(SAFE_MODEL);
@@ -401,11 +402,13 @@ test("switch, fork, reload, and shutdown reset the ledger", () => {
     assert.equal(report.aggregate.correlationFailures, 0, boundary);
     assert.deepEqual(report.aggregate.providerUsageTotals.input, { value: null, measurement: "unavailable" }, boundary);
     assert.deepEqual(report.aggregate.estimatedCharacters, {}, boundary);
-    if (boundary === "shutdown") {
-      assert.equal(ledger.getDigestKey(), undefined, boundary);
-    } else {
+    if (boundary === "reload") {
       assert.match(ledger.getDigestKey() ?? "", /^[a-f0-9]{64}$/, boundary);
+    } else {
+      assert.equal(ledger.getDigestKey(), undefined, boundary);
     }
+    ledger.observeSessionStart("startup");
+    assert.match(ledger.getDigestKey() ?? "", /^[a-f0-9]{64}$/, boundary);
   }
 });
 
