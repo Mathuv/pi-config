@@ -1,4 +1,5 @@
 import { createHmac } from "node:crypto";
+import { formatSkillsForPrompt } from "@earendil-works/pi-coding-agent";
 import type { BuildSystemPromptOptions, Skill, SlashCommandInfo, ToolInfo } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import {
@@ -29,43 +30,15 @@ export type PromptSource =
   | { readonly kind: "prompt"; readonly name: string };
 
 /**
- * Mirrors the public formatSkillsForPrompt export from
- * @earendil-works/pi-coding-agent (dist/core/skills.js). Kept local so the
- * focused tests run on a portable checkout without a user-specific package
- * symlink. The byte-for-byte output keeps the catalog span claim aligned with
- * the system prompt that Pi builds.
+ * One portable dependency boundary to Pi's public skill formatter.
+ *
+ * Pi provides @earendil-works/pi-coding-agent to extensions at runtime
+ * through the extension-loader aliases, so the catalog span claim always
+ * matches the system prompt that the running Pi builds. The pinned test
+ * dependency in package.json resolves the same public export for the
+ * standalone focused tests.
  */
-export function formatSkillsForPrompt(skills: readonly Skill[]): string {
-  const visibleSkills = skills.filter((s) => !s.disableModelInvocation);
-  if (visibleSkills.length === 0) {
-    return "";
-  }
-  const lines = [
-    "\n\nThe following skills provide specialized instructions for specific tasks.",
-    "Use the read tool to load a skill's file when the task matches its description.",
-    "When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.",
-    "",
-    "<available_skills>",
-  ];
-  for (const skill of visibleSkills) {
-    lines.push("  <skill>");
-    lines.push(`    <name>${escapeXml(skill.name)}</name>`);
-    lines.push(`    <description>${escapeXml(skill.description)}</description>`);
-    lines.push(`    <location>${escapeXml(skill.filePath)}</location>`);
-    lines.push("  </skill>");
-  }
-  lines.push("</available_skills>");
-  return lines.join("\n");
-}
-
-function escapeXml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
-}
+export { formatSkillsForPrompt };
 
 /**
  * Keyed HMAC-SHA256 hex digest for runtime boundary matching.
@@ -278,19 +251,19 @@ function attributeSystem(input: SystemAttributionInput): SourceEstimate[] {
         rows.push(systemRow("system:tool-snippets", "system", "Tool prompt snippets", "attributed", chars, count));
       }
     }
-    // Pi trims, drops empty, and deduplicates guidelines before building the
-    // prompt. Core inserts conditional guidelines before and after the
-    // supplied array with one shared dedup set (dist/core/system-prompt.js).
-    // Seed the set with those core guidelines so a supplied duplicate cannot
-    // claim a core-owned span.
+    // Pi trims, drops empty, and deduplicates guidelines with one shared set
+    // (dist/core/system-prompt.js:44-72). Pi inserts the conditional Bash
+    // guideline before promptGuidelines and the two always-included
+    // guidelines afterward. Seed only the earlier conditional guideline so a
+    // supplied duplicate cannot claim a core-owned span, and process the
+    // supplied values before the later core defaults. The always-included
+    // core defaults themselves stay in the unattributed remainder.
     const guidelines = Array.isArray(options.promptGuidelines) ? options.promptGuidelines : [];
     const seen = new Set<string>();
     const toolNames = Array.isArray(options.selectedTools) ? options.selectedTools : DEFAULT_TOOLS;
     if (toolNames.includes("bash") && !toolNames.includes("grep") && !toolNames.includes("find") && !toolNames.includes("ls")) {
       seen.add("Use bash for file operations like ls, rg, find");
     }
-    seen.add("Be concise in your responses");
-    seen.add("Show file paths clearly when working with files");
     let chars = 0;
     let count = 0;
     for (const guideline of guidelines) {
@@ -485,8 +458,8 @@ function userTextContent(message: AnyMessage): string | null {
 /**
  * Finds the evidence-based current-prompt boundary.
  *
- * With a keyed prompt digest, the current prompt is the first user message
- * whose text hashes to that digest. Pi captures this digest from
+ * With a keyed prompt digest, the current prompt is the most recent user
+ * message whose text hashes to that digest. Pi captures this digest from
  * before_agent_start.prompt. The digest preserves the boundary through
  * tool-loop requests, where Pi appends assistant responses and tool results
  * without a new user message. A digest with no matching message fails closed:
@@ -501,7 +474,10 @@ function userTextContent(message: AnyMessage): string | null {
  */
 function findCurrentPromptIndex(messages: readonly AgentMessage[], currentPromptDigest: string | undefined, digestKey: string | undefined): number {
   if (typeof currentPromptDigest === "string" && currentPromptDigest.length > 0 && typeof digestKey === "string" && digestKey.length > 0) {
-    for (let i = 0; i < messages.length; i += 1) {
+    // A repeated prompt can hash to the same digest as an older historical
+    // prompt. Search from the end so the digest resolves to the current
+    // match, and older identical prompts stay plain user history.
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
       const text = userTextContent(messages[i] as AnyMessage);
       if (text !== null && keyedDigest(text, digestKey) === currentPromptDigest) return i;
     }
