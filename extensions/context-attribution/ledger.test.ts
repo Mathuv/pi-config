@@ -51,6 +51,7 @@ test("a fresh ledger starts empty and reports a zeroed aggregate", () => {
   const ledger = createAttributionLedger();
   const report = ledger.snapshot();
   assert.equal(report.latest, null);
+  assert.equal(report.providerAttempts, null);
   assert.equal(report.aggregate.eligibleRequests, 0);
   assert.equal(report.aggregate.completeProviderUsage, 0);
   assert.equal(report.aggregate.excludedProviderCalls, 0);
@@ -150,6 +151,7 @@ test("one normal request completes and duplicate provider calls stay on the same
   assert.equal(report.latest?.sequence, 1);
   assert.equal(report.latest?.correlation, "recorded");
   assert.equal(report.latest?.providerRequest, "recorded");
+  assert.equal(report.providerAttempts, 2);
   assert.equal(report.aggregate.eligibleRequests, 1);
   assert.equal(report.aggregate.completeProviderUsage, 1);
   assert.deepEqual(report.latest?.providerUsage?.input, { value: 100, measurement: "provider-reported" });
@@ -509,7 +511,7 @@ test("handles more than 1,000 requests without retaining request history", () =>
   assert.equal(report.aggregate.eligibleRequests, 1_001);
   assert.equal(report.aggregate.completeProviderUsage, 1_001);
   assert.deepEqual(report.aggregate.estimatedCharacters, { "system:remainder": 10_010 });
-  assert.deepEqual(Object.keys(report).sort(), ["aggregate", "latest"]);
+  assert.deepEqual(Object.keys(report).sort(), ["aggregate", "latest", "providerAttempts"]);
   assert.equal(report.latest?.warnings.length, 0);
 });
 
