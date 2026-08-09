@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { createHmac } from "node:crypto";
 import { formatSkillsForPrompt } from "@earendil-works/pi-coding-agent";
 import type { Skill, SlashCommandInfo, ToolInfo } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
@@ -615,4 +616,138 @@ test("system, cwd, snippet, and guideline markers never appear in returned rows"
     assert.ok(!serialized.includes(marker), `returned rows leaked ${marker}`);
   }
   assert.equal(rows.some((r) => r.key === "system:cwd"), true);
+});
+
+test("preserves skill-prompt attribution through tool-loop requests with a keyed prompt digest", () => {
+  const skillPrompt = "build the project now";
+  const digestKey = "runtime-only-test-key";
+  const currentPromptDigest = createHmac("sha256", digestKey).update(skillPrompt).digest("hex");
+  const assistant = (id: string, toolName: string, args: Record<string, unknown>, ts: number) => ({
+    role: "assistant",
+    content: [{ type: "toolCall", id, name: toolName, arguments: args }],
+    api: "openai", provider: "openai", model: "gpt-test",
+    usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+    stopReason: "toolUse", timestamp: ts,
+  });
+  const toolResult = (id: string, text: string, ts: number) => ({ role: "toolResult", toolCallId: id, toolName: "read", content: [{ type: "text", text }], isError: false, timestamp: ts });
+  const messages = [
+    { role: "user", content: [{ type: "text", text: skillPrompt }], timestamp: 1 },
+    assistant("call-1", "read", { path: "/src/main.ts" }, 2),
+    toolResult("call-1", "File contents.", 3),
+    // A second tool-loop turn appends another assistant response and result
+    // without a new user message.
+    assistant("call-2", "bash", { command: "ls" }, 4),
+    toolResult("call-2", "src\n", 5),
+  ] as unknown as AgentMessage[];
+  const rows = attributeContext({
+    system: emptySystem(),
+    messages,
+    promptSource: { kind: "skill", name: "build" },
+    currentPromptDigest,
+    digestKey,
+    activeTools: [],
+    allTools: [],
+  });
+  const byKey = rowMap(rows);
+  assert.ok(byKey.has("msg:skill-prompt"), "the skill prompt must stay attributed in a tool loop");
+  assert.equal(byKey.get("msg:skill-prompt")!.label, "Skill: build");
+  assert.equal(byKey.get("msg:skill-prompt")!.characters.value, skillPrompt.length);
+  assert.ok(!byKey.has("msg:user"), "the skill prompt must not fall into user history");
+  assert.equal(byKey.get("msg:tool-call")!.itemCount.value, 2);
+  assert.equal(byKey.get("msg:tool-result")!.itemCount.value, 2);
+});
+
+test("preserves prompt-template attribution through tool-loop requests", () => {
+  const promptText = "design the module";
+  const digestKey = "runtime-only-test-key";
+  const currentPromptDigest = createHmac("sha256", digestKey).update(promptText).digest("hex");
+  const messages = [
+    { role: "user", content: promptText, timestamp: 1 },
+    {
+      role: "assistant",
+      content: [{ type: "toolCall", id: "call-1", name: "read", arguments: { path: "/src/mod.ts" } }],
+      api: "openai", provider: "openai", model: "gpt-test",
+      usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+      stopReason: "toolUse", timestamp: 2,
+    },
+    { role: "toolResult", toolCallId: "call-1", toolName: "read", content: [{ type: "text", text: "contents" }], isError: false, timestamp: 3 },
+  ] as unknown as AgentMessage[];
+  const rows = attributeContext({
+    system: emptySystem(),
+    messages,
+    promptSource: { kind: "prompt", name: "interactive-plan" },
+    currentPromptDigest,
+    digestKey,
+    activeTools: [],
+    allTools: [],
+  });
+  const byKey = rowMap(rows);
+  assert.ok(byKey.has("msg:prompt-template"), "the prompt template must stay attributed in a tool loop");
+  assert.equal(byKey.get("msg:prompt-template")!.label, "Prompt template: interactive-plan");
+  assert.equal(byKey.get("msg:prompt-template")!.characters.value, promptText.length);
+});
+
+test("a prompt digest that matches no user message never claims skill ownership", () => {
+  const digestKey = "runtime-only-test-key";
+  const currentPromptDigest = createHmac("sha256", digestKey).update("some other prompt text").digest("hex");
+  const messages = [
+    { role: "user", content: "build the project now", timestamp: 1 },
+    { role: "user", content: "extension text", timestamp: 2 },
+  ] as unknown as AgentMessage[];
+  const rows = attributeContext({
+    system: emptySystem(),
+    messages,
+    promptSource: { kind: "skill", name: "build" },
+    currentPromptDigest,
+    digestKey,
+    activeTools: [],
+    allTools: [],
+  });
+  const byKey = rowMap(rows);
+  assert.ok(!byKey.has("msg:skill-prompt"), "no digest match must not claim a skill prompt");
+  assert.ok(byKey.has("msg:user"), "the messages remain plain user history");
+});
+
+test("core-inserted guidelines cannot be claimed by the supplied guideline row", () => {
+  const bashGuideline = "Use bash for file operations like ls, rg, find";
+  const options = {
+    cwd: CWD,
+    selectedTools: ["read", "bash"],
+    toolSnippets: { read: "Read a file from disk.", bash: "Run a shell command." },
+    promptGuidelines: [bashGuideline],
+  };
+  const prompt = buildPromptFixture(options);
+  const rows = attributeContext({ system: { systemPrompt: prompt, options, matchesCurrent: true }, messages: [], activeTools: [], allTools: [] });
+  const byKey = rowMap(rows);
+  assert.ok(!byKey.has("system:guidelines"), "a core-inserted Bash guideline must stay unclaimed");
+  const remainder = byKey.get("system:remainder")!;
+  assert.ok(remainder.characters.value! >= bashGuideline.length, "the core guideline remains in the unattributed remainder");
+});
+
+test("a supplied copy of an always-included core guideline is not claimed", () => {
+  const options = { cwd: CWD, promptGuidelines: ["Be concise in your responses"] };
+  const prompt = buildPromptFixture(options);
+  const rows = attributeContext({ system: { systemPrompt: prompt, options, matchesCurrent: true }, messages: [], activeTools: [], allTools: [] });
+  const byKey = rowMap(rows);
+  assert.ok(!byKey.has("system:guidelines"), "an always-included core guideline must stay unclaimed");
+});
+
+test("matches a keyed skill-path digest and rejects mismatched paths", async () => {
+  const mod = await import("./attribution.ts") as {
+    keyedDigest?: (value: string, key: string) => string;
+    matchSkillPathDigest?: (path: string, key: string | undefined, digests: ReadonlyMap<string, string> | undefined) => string | undefined;
+  };
+  assert.equal(typeof mod.keyedDigest, "function", "keyedDigest must be exported");
+  assert.equal(typeof mod.matchSkillPathDigest, "function", "matchSkillPathDigest must be exported");
+  const key = "runtime-only-test-key";
+  const path = "/skills/commit/SKILL.md";
+  const digest = mod.keyedDigest!(path, key);
+  assert.match(digest, /^[a-f0-9]{64}$/);
+  assert.equal(mod.keyedDigest!(path, key), digest);
+  assert.notEqual(mod.keyedDigest!(path, key + "-other"), digest);
+  const matches = new Map([[digest, "commit"]]);
+  assert.equal(mod.matchSkillPathDigest!(path, key, matches), "commit");
+  assert.equal(mod.matchSkillPathDigest!("/other/file.md", key, matches), undefined);
+  assert.equal(mod.matchSkillPathDigest!(path, undefined, matches), undefined);
+  assert.equal(mod.matchSkillPathDigest!(path, key, undefined), undefined);
 });
