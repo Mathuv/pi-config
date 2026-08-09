@@ -7,7 +7,7 @@
  * or any field that can carry prompt, result, payload, or credential text.
  */
 
-import { sanitizeLabel } from "./estimate.ts";
+import { MAX_LABEL_LENGTH, sanitizeLabel } from "./estimate.ts";
 import { Key, matchesKey, truncateToWidth } from "@earendil-works/pi-tui";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type {
@@ -82,11 +82,22 @@ function formatMetric(value: LabeledValue, unit: string, prefix: string): string
     : `${prefix}${formatNumber(value.value)} ${unit} [${value.measurement}]`;
 }
 
+/**
+ * Non-destructive display guard for attribution-produced labels.
+ * The attribution layer sanitizes every dynamic part. The guard only
+ * removes control characters and enforces the length limit.
+ */
+function displayLabel(value: string): string {
+  const cleaned = value.replace(/[\u0000-\u001f\u007f-\u009f]+/g, " ").replace(/\s+/g, " ").trim();
+  if (!cleaned) return "unavailable";
+  return cleaned.length <= MAX_LABEL_LENGTH ? cleaned : cleaned.slice(0, MAX_LABEL_LENGTH - 1) + "…";
+}
+
 function renderSourceRow(row: SourceEstimate): string {
   const chars = formatMetric(row.characters, "chars", "");
   const tokens = formatMetric(row.tokens, "tokens", "~");
   const suffix = row.attribution === "unattributed" ? " [unattributed]" : "";
-  return `  ${sanitizeLabel(row.label).padEnd(24)} ${chars}  ${tokens}${suffix}`;
+  return `  ${displayLabel(row.label).padEnd(24)} ${chars}  ${tokens}${suffix}`;
 }
 
 function sortSources(sources: readonly SourceEstimate[]): SourceEstimate[] {
@@ -248,7 +259,9 @@ export async function showContextAttribution(report: AttributionReport, ctx: Ext
   }
   await ctx.ui.custom<void>((tui, _theme, _keybindings, done) => {
     const view = new ScrollableReportView(text, () => done());
-    const height = Math.max(10, Math.floor((tui.terminal.rows || 24) * 0.8));
+    // The overlay caps the content at floor(rows * 0.8). The component must
+    // use the same height or the overlay slices the bottom lines away.
+    const height = Math.max(1, Math.floor((tui.terminal.rows || 24) * 0.8));
     const component = {
       get focused(): boolean {
         return true;
