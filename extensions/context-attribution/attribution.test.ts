@@ -353,13 +353,13 @@ test("counts only active tools and groups them by sanitized provenance", () => {
   assert.equal(builtin.itemCount.value, 2);
   assert.equal(builtin.characters.value, JSON.stringify({ name: "read", description: "Read a file.", parameters: { type: "object", properties: { path: { type: "string" } } } }).length + JSON.stringify({ name: "bash", description: "Run a command.", parameters: { type: "object" } }).length);
 
-  const extension = byKey.get("tools:$CWD/extensions/sample-tool.ts")!;
-  assert.equal(extension.label, "Tools: $CWD/extensions/sample-tool.ts");
+  const extension = byKey.get("tools:user:top-level:$CWD/extensions/sample-tool.ts")!;
+  assert.equal(extension.label, "Tools: user/top-level/$CWD/extensions/sample-tool.ts");
   assert.equal(extension.itemCount.value, 1);
   assert.equal(extension.label.includes("Users"), false);
 
-  const adapter = byKey.get("tools:git/github.com/nicobailon/pi-mcp-adapter")!;
-  assert.equal(adapter.label, "Tools: git/github.com/nicobailon/pi-mcp-adapter");
+  const adapter = byKey.get("tools:project:package:git/github.com/nicobailon/pi-mcp-adapter")!;
+  assert.equal(adapter.label, "Tools: project/package/git/github.com/nicobailon/pi-mcp-adapter");
   assert.equal(adapter.itemCount.value, 1);
 
   assert.ok(!byKey.has("tools:" + "edit"));
@@ -461,4 +461,158 @@ test("a unique secret marker in every raw source never appears in returned rows"
     assert.ok(!serialized.includes(marker), `returned rows leaked ${marker}`);
   }
   assert.ok(serialized.length > 0);
+});
+
+test("a generic user-role extension message after the current prompt stays unattributed", () => {
+  const skillPrompt = "build";
+  const extensionText = "extension text";
+  const messages = [
+    { role: "user", content: skillPrompt, timestamp: 1 },
+    { role: "user", content: extensionText, timestamp: 2 },
+  ] as unknown as AgentMessage[];
+  const rows = attributeContext({ system: emptySystem(), messages, promptSource: { kind: "skill", name: "build" }, activeTools: [], allTools: [] });
+  const byKey = rowMap(rows);
+  assert.equal(byKey.get("msg:skill-prompt")!.characters.value, skillPrompt.length);
+  assert.equal(byKey.get("msg:skill-prompt")!.label, "Skill: build");
+  const extensionRow = byKey.get("msg:user-unattributed")!;
+  assert.equal(extensionRow.characters.value, extensionText.length);
+  assert.equal(extensionRow.attribution, "unattributed");
+  assert.equal(extensionRow.label, "User text without source metadata");
+  assert.ok(!byKey.has("msg:user"));
+});
+
+test("an unmatched skill read tool result stays plain tool output", () => {
+  const messages = [
+    {
+      role: "assistant",
+      content: [{ type: "toolCall", id: "call-other", name: "read", arguments: { path: "/other/file.md" } }],
+      api: "openai", provider: "openai", model: "gpt-test",
+      usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+      stopReason: "toolUse", timestamp: 1,
+    },
+    { role: "toolResult", toolCallId: "call-other", toolName: "read", content: [{ type: "text", text: "Unmatched body content." }], isError: false, timestamp: 2 },
+  ] as unknown as AgentMessage[];
+  const skillReads = new Map([["call-read", "commit"]]);
+  const rows = attributeContext({ system: emptySystem(), messages, promptSource: { kind: "plain" }, skillReads, activeTools: [], allTools: [] });
+  const byKey = rowMap(rows);
+  assert.equal(byKey.get("msg:tool-result")!.characters.value, "Unmatched body content.".length);
+  assert.ok(!byKey.has("msg:skill-read:commit"));
+});
+
+test("a context-prune summary row is unattributed with no detailed source", () => {
+  const messages = [
+    { role: "custom", customType: "context-prune-summary", content: "Pruned tool results were summarized.", display: false, timestamp: 1 },
+  ] as unknown as AgentMessage[];
+  const rows = attributeContext({ system: emptySystem(), messages, activeTools: [], allTools: [] });
+  const byKey = rowMap(rows);
+  assert.equal(byKey.get("msg:prune-summary")!.category, "summary");
+  assert.equal(byKey.get("msg:prune-summary")!.attribution, "unattributed");
+  assert.equal(byKey.get("msg:prune-summary")!.characters.value, "Pruned tool results were summarized.".length);
+});
+
+test("wrapped tool provenance with a control-bearing credential URL is sanitized", () => {
+  const wrapped = "<git:https\u0000://user:pass@example.test/repo?q=secret#x>index.ts";
+  const allTools = [
+    { name: "mcp_do", description: "Do a thing.", parameters: { type: "object" }, sourceInfo: { path: wrapped, source: "git", scope: "project", origin: "package" } },
+  ] as ToolInfo[];
+  const rows = attributeContext({ system: emptySystem(), messages: [], activeTools: ["mcp_do"], allTools, cwd: "/Users/mathu/.pi/agent" });
+  const serialized = JSON.stringify(rows);
+  assert.ok(!serialized.includes("user:pass"), "returned rows leaked credentials");
+  assert.ok(!serialized.includes("?q=secret"), "returned rows leaked query data");
+  assert.ok(!serialized.includes("#x"), "returned rows leaked a fragment");
+  const row = rows.find((r) => r.category === "tools")!;
+  assert.equal(row.key, "tools:project:package:git/https://example.test/repo");
+  assert.equal(row.label, "Tools: project/package/git/https://example.test/repo");
+});
+
+test("control-bearing URL custom types never leak credentials or query data", () => {
+  const controlUrl = "https\u0000://user:pass@example.test/repo?q=secret#x";
+  const messages = [
+    { role: "custom", customType: controlUrl, content: "payload", display: true, timestamp: 1 },
+  ] as unknown as AgentMessage[];
+  const rows = attributeContext({ system: emptySystem(), messages, activeTools: [], allTools: [] });
+  const serialized = JSON.stringify(rows);
+  assert.ok(!serialized.includes("user:pass"), "returned rows leaked credentials");
+  assert.ok(!serialized.includes("?q=secret"), "returned rows leaked query data");
+  assert.ok(!serialized.includes("#x"), "returned rows leaked a fragment");
+  const row = rows.find((r) => r.key.startsWith("msg:custom:"))!;
+  assert.equal(row.label, "Extension: https://example.test/repo");
+});
+
+test("inactive tool snippets are not claimed and guidelines are trimmed and deduplicated", () => {
+  const options = {
+    cwd: CWD,
+    selectedTools: ["read", "bash"],
+    toolSnippets: { read: "Read a file from disk.", bash: "Run a shell command.", grep: "Search text." },
+    promptGuidelines: ["Search text.", "  Search text.  ", "   "],
+  };
+  const prompt = buildPromptFixture(options);
+  const rows = attributeContext({ system: { systemPrompt: prompt, options, matchesCurrent: true }, messages: [], activeTools: [], allTools: [] });
+  const byKey = rowMap(rows);
+  assert.equal(byKey.get("system:tool-snippets")!.characters.value, options.toolSnippets.read.length + options.toolSnippets.bash.length);
+  assert.equal(byKey.get("system:tool-snippets")!.itemCount.value, 2);
+  assert.equal(byKey.get("system:guidelines")!.characters.value, "Search text.".length);
+  assert.equal(byKey.get("system:guidelines")!.itemCount.value, 1);
+});
+
+test("tool grouping preserves scope and origin so distinct sources cannot collapse", () => {
+  const allTools = [
+    { name: "tool_a", description: "A", parameters: { type: "object" }, sourceInfo: { path: "/Users/alice/project/ext/tool.ts", source: "local", scope: "user", origin: "top-level" } },
+    { name: "tool_b", description: "B", parameters: { type: "object" }, sourceInfo: { path: "/Users/alice/project/ext/tool.ts", source: "local", scope: "project", origin: "package" } },
+  ] as ToolInfo[];
+  const rows = attributeContext({ system: emptySystem(), messages: [], activeTools: ["tool_a", "tool_b"], allTools, cwd: CWD });
+  const byKey = rowMap(rows);
+  const keyA = "tools:user:top-level:$CWD/ext/tool.ts";
+  const keyB = "tools:project:package:$CWD/ext/tool.ts";
+  assert.ok(byKey.has(keyA));
+  assert.ok(byKey.has(keyB));
+  assert.equal(byKey.get(keyA)!.label, "Tools: user/top-level/$CWD/ext/tool.ts");
+  assert.equal(byKey.get(keyB)!.label, "Tools: project/package/$CWD/ext/tool.ts");
+  assert.equal(byKey.get(keyA)!.itemCount.value, 1);
+  assert.equal(byKey.get(keyB)!.itemCount.value, 1);
+});
+
+test("prefixed dynamic labels and keys never exceed 120 characters", () => {
+  const longName = "x".repeat(200);
+  const longToolPath = "/Users/alice/project/" + longName;
+  const allTools = [
+    { name: "long_tool", description: "d", parameters: { type: "object" }, sourceInfo: { path: longToolPath, source: "local", scope: "user", origin: "top-level" } },
+  ] as ToolInfo[];
+  const messages = [
+    { role: "user", content: "prompt text", timestamp: 1 },
+    { role: "custom", customType: longName, content: "payload", display: true, timestamp: 2 },
+  ] as unknown as AgentMessage[];
+  const skillReads = new Map([["call-long", longName]]);
+  const rows = attributeContext({
+    system: emptySystem(),
+    messages,
+    promptSource: { kind: "skill", name: longName },
+    skillReads,
+    activeTools: ["long_tool"],
+    allTools,
+    cwd: CWD,
+  });
+  assert.equal(rows.length > 0, true);
+  for (const row of rows) {
+    assert.ok(row.label.length <= 120, `label exceeds 120: ${row.label.length}`);
+    assert.ok(row.key.length <= 120, `key exceeds 120: ${row.key.length}`);
+  }
+});
+
+test("system, cwd, snippet, and guideline markers never appear in returned rows", () => {
+  const markers = { system: "MARKER_SYS_77aa", cwd: "MARKER_CWD_97b2", snippet: "MARKER_SNIPPET_75ff", guideline: "MARKER_GUIDELINE_86a1" };
+  const markerCwd = `/Users/alice/project/${markers.cwd}`;
+  const options = {
+    cwd: markerCwd,
+    toolSnippets: { read: `Snippet with ${markers.snippet}.`, bash: "Bash snippet." },
+    promptGuidelines: [`Guideline with ${markers.guideline}.`],
+    selectedTools: ["read", "bash"],
+  };
+  const prompt = buildPromptFixture(options) + `\n${markers.system}`;
+  const rows = attributeContext({ system: { systemPrompt: prompt, options, matchesCurrent: true }, messages: [], activeTools: [], allTools: [] });
+  const serialized = JSON.stringify(rows);
+  for (const marker of Object.values(markers)) {
+    assert.ok(!serialized.includes(marker), `returned rows leaked ${marker}`);
+  }
+  assert.equal(rows.some((r) => r.key === "system:cwd"), true);
 });
