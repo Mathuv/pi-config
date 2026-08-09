@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { attributeContext } from "./attribution.ts";
 import { createAttributionLedger, type AttributionLedger } from "./ledger.ts";
 import { renderReport, ScrollableReportView, showContextAttribution, type AttributionReport } from "./render.ts";
 import type {
@@ -259,6 +260,52 @@ test("sorts source rows by estimated tokens then stable key", () => {
   assert.ok(agents < remainder && remainder < alpha && alpha < small);
 });
 
+test("renders the attribution-produced composed source labels unchanged", () => {
+  const rows = [
+    sourceRow("tools:pi built-in", "Tools: pi built-in", 40_000),
+    sourceRow("tools:pi sdk", "Tools: pi sdk", 500),
+    sourceRow("msg:skill-prompt", "Skill: build", 20_200),
+    sourceRow("msg:prompt-template", "Prompt template: interactive-plan", 1_200),
+    sourceRow("msg:skill-read:commit", "Skill body: commit", 600),
+    sourceRow("msg:custom:example-extension", "Extension: example-extension", 800),
+    sourceRow(
+      "tools:project:package:git/github.com/nicobailon/pi-mcp-adapter",
+      "Tools: project/package/git/github.com/nicobailon/pi-mcp-adapter",
+      700,
+    ),
+  ];
+  const text = renderReport(report({ latest: request({ sources: rows }) }));
+  const expected = [
+    "Tools: pi built-in",
+    "Tools: pi sdk",
+    "Skill: build",
+    "Prompt template: interactive-plan",
+    "Skill body: commit",
+    "Extension: example-extension",
+    "Tools: project/package/git/github.com/nicobailon/pi-mcp-adapter",
+  ];
+  for (const label of expected) {
+    assert.ok(text.includes(label), `composed source label lost: ${label}`);
+  }
+});
+
+test("the display guard strips controls, caps length, and keeps composed labels", () => {
+  const text = renderReport(
+    report({
+      latest: request({
+        sources: [
+          sourceRow("k:ctrl", "Skill:\u0000evil", 100),
+          sourceRow("k:long", `Tools: ${"x".repeat(300)}`, 200),
+        ],
+      }),
+    }),
+  );
+  assert.ok(!text.includes("\u0000"), "control character leaked");
+  assert.ok(text.includes("Skill: evil"), "control-stripped label was lost");
+  assert.ok(text.includes("…"), "overlong label was not capped");
+  assert.ok(!text.includes("x".repeat(113)), "overlong label exceeded the length cap");
+});
+
 test("formats numbers with thousands separators", () => {
   const text = renderReport(
     report({
@@ -335,6 +382,24 @@ test("shows provider attempts only when a retry occurred", () => {
 });
 
 test("keeps secret markers out of every rendered dynamic value", () => {
+  // Raw unsafe values pass through the attribution boundary first. The
+  // boundary sanitizes each dynamic part; the renderer never sees the raw
+  // strings. The model record is the one raw shape the renderer sanitizes.
+  const sources = attributeContext({
+    system: { systemPrompt: "synthetic system prompt", options: { cwd: "/tmp" }, matchesCurrent: true },
+    messages: [
+      {
+        role: "custom",
+        customType: "https://user:pass@example.test/custom?q=MARKER_CUSTOM#frag",
+        content: [{ type: "text", text: "Custom extension content." }],
+        timestamp: 1,
+      },
+      { role: "user", content: "/Users/alice/private/MARKER_DIR/file.ts", timestamp: 2 },
+    ],
+    promptSource: undefined,
+    activeTools: [],
+    allTools: [],
+  });
   const text = renderReport(
     report({
       latest: request({
@@ -344,16 +409,12 @@ test("keeps secret markers out of every rendered dynamic value", () => {
           model: "gpt-5.6-sol",
           measurement: "recorded",
         },
-        sources: [
-          sourceRow("KEY_MARKER_A", "https://user:pass@example.test/repo?q=MARKER_QUERY#frag", 100),
-          sourceRow("KEY_MARKER_B", "/Users/alice/private/MARKER_DIR/file.ts", 200),
-          sourceRow("KEY_MARKER_C", "safe label", 300),
-        ],
+        sources,
       }),
       aggregate: aggregate({ estimatedCharacters: { "KEY_AGG_1": 100, "KEY_AGG_2": 200 } }),
     }),
   );
-  for (const marker of ["KEY_MARKER_A", "KEY_MARKER_B", "KEY_MARKER_C", "KEY_AGG_1", "KEY_AGG_2", "MARKER_MODEL_1", "MARKER_QUERY", "MARKER_DIR"]) {
+  for (const marker of ["KEY_AGG_1", "KEY_AGG_2", "MARKER_MODEL_1", "MARKER_CUSTOM", "MARKER_QUERY", "MARKER_DIR"]) {
     assert.ok(!text.includes(marker), `rendered report leaked ${marker}`);
   }
   assert.ok(!text.includes("user:pass"));
@@ -496,4 +557,39 @@ test("showContextAttribution shows a scrollable overlay only in TUI mode and add
   component.invalidate();
   component.handleInput("\u001b");
   assert.equal(doneCalls, 1);
+});
+
+test("a small terminal reaches every report line within the overlay height", async () => {
+  const rpt = report({
+    latest: request({
+      warnings: ["correlation-unavailable"],
+      sources: [sourceRow("system:remainder", "Remainder", 400)],
+    }),
+    providerAttempts: null,
+    aggregate: aggregate({ eligibleRequests: 1, estimatedCharacters: { "system:remainder": 400 } }),
+  });
+  const text = renderReport(rpt);
+  const lastLine = text.split("\n").at(-1)!;
+  for (const rows of [10, 12, 13]) {
+    let capturedFactory: ((tui: unknown, theme: unknown, keybindings: unknown, done: () => void) => unknown) | undefined;
+    const ui = {
+      custom: async (factory: unknown) => {
+        capturedFactory = factory as typeof capturedFactory;
+        return undefined;
+      },
+    };
+    await showContextAttribution(rpt, { mode: "tui", ui } as unknown as ExtensionContext);
+    const overlayMaxHeight = Math.max(1, Math.floor(rows * 0.8));
+    const component = capturedFactory!({ terminal: { rows } }, {}, {}, () => {}) as {
+      render(width: number): string[];
+      handleInput(data: string): void;
+    };
+    // The component height must match the overlay maxHeight. A taller
+    // component would lose its bottom lines to the overlay slice.
+    assert.equal(component.render(80).length, overlayMaxHeight, `rows=${rows} height mismatch`);
+    // Scrolling to the bottom must reveal the last report line.
+    for (let i = 0; i < 300; i += 1) component.handleInput("\u001b[B");
+    const bottom = component.render(80);
+    assert.ok(bottom.includes(lastLine), `rows=${rows}: the last report line is unreachable`);
+  }
 });
