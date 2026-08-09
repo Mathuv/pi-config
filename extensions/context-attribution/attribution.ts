@@ -1,0 +1,539 @@
+import { formatSkillsForPrompt } from "@earendil-works/pi-coding-agent";
+import type { BuildSystemPromptOptions, Skill, SlashCommandInfo, ToolInfo } from "@earendil-works/pi-coding-agent";
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import {
+  countJsonCharacters,
+  estimateImageCharacters,
+  estimateTokens,
+  estimatedValue,
+  recordedValue,
+  sanitizeLabel,
+  sanitizePathLabel,
+  unavailableValue,
+} from "./estimate.ts";
+import type { Attribution, SourceCategory, SourceEstimate, WarningCode } from "./types.ts";
+
+/**
+ * Pure source-attribution layer for one foreground request.
+ *
+ * Every raw runtime value stays inside the function call that received it.
+ * The returned rows contain numeric metrics, fixed labels, and sanitized
+ * labels only.
+ */
+
+export type PromptSource =
+  | { readonly kind: "plain" }
+  | { readonly kind: "skill"; readonly name: string }
+  | { readonly kind: "prompt"; readonly name: string };
+
+export interface SystemAttributionInput {
+  /** The effective system prompt at the context event. */
+  readonly systemPrompt: string;
+  /** Structured options captured at before_agent_start. */
+  readonly options: BuildSystemPromptOptions;
+  /** False when the recorded system digest no longer matches the current prompt. */
+  readonly matchesCurrent: boolean;
+}
+
+export interface AttributionInput {
+  readonly system: SystemAttributionInput;
+  /** Used only during this call. Never cloned or retained. */
+  readonly messages: readonly AgentMessage[];
+  readonly promptSource?: PromptSource;
+  /** Maps a tool-call ID to a safe skill label. */
+  readonly skillReads?: ReadonlyMap<string, string>;
+  readonly activeTools: readonly string[];
+  readonly allTools: readonly ToolInfo[];
+  /** Working directory for sanitized tool labels. */
+  readonly cwd?: string;
+}
+
+type AnyMessage = { role?: unknown; [key: string]: unknown };
+
+const DEFAULT_TOOLS = ["read", "bash", "edit", "write"];
+
+/** One public facade that returns stable sanitized source rows. */
+export function attributeContext(input: AttributionInput): SourceEstimate[] {
+  return mergeSanitizedRows([
+    ...attributeSystem(input.system),
+    ...attributeMessages(input.messages, input.promptSource, input.skillReads),
+    ...attributeTools(input.activeTools, input.allTools, input.cwd),
+  ]);
+}
+
+/**
+ * Classify the current prompt from its first slash-command token.
+ * The body text is never inspected for extension markers.
+ */
+export function classifyPromptSource(inputText: string, commands: readonly SlashCommandInfo[]): PromptSource {
+  const text = typeof inputText === "string" ? inputText : "";
+  const firstToken = text.trimStart().split(/\s+/, 1)[0] ?? "";
+  if (!firstToken.startsWith("/")) return { kind: "plain" };
+  const raw = firstToken.slice(1);
+  const command = Array.isArray(commands) ? commands.find((c) => c?.name === raw) : undefined;
+  if (command) {
+    if (command.source === "skill") {
+      const name = raw.startsWith("skill:") ? raw.slice("skill:".length) : raw;
+      return { kind: "skill", name: sanitizeLabel(name) };
+    }
+    if (command.source === "prompt") return { kind: "prompt", name: sanitizeLabel(raw) };
+  }
+  return { kind: "plain" };
+}
+
+// ---------------------------------------------------------------------------
+// System prompt span claiming
+// ---------------------------------------------------------------------------
+
+/** Claims each character span at most once. */
+class SpanClaimant {
+  private readonly text: string;
+  private readonly claimed: Uint8Array;
+
+  constructor(text: string) {
+    this.text = typeof text === "string" ? text : "";
+    this.claimed = new Uint8Array(this.text.length);
+  }
+
+  claim(needle: string): number {
+    if (needle.length === 0 || needle.length > this.text.length) return 0;
+    let from = 0;
+    while (from <= this.text.length - needle.length) {
+      const index = this.text.indexOf(needle, from);
+      if (index === -1) return 0;
+      if (this.isFree(index, index + needle.length)) {
+        this.mark(index, index + needle.length);
+        return needle.length;
+      }
+      from = index + 1;
+    }
+    return 0;
+  }
+  unclaimed(): number {
+    let total = 0;
+    for (const mark of this.claimed) {
+      if (mark === 0) total += 1;
+    }
+    return total;
+  }
+
+  private isFree(start: number, end: number): boolean {
+    for (let i = start; i < end; i += 1) {
+      if (this.claimed[i] !== 0) return false;
+    }
+    return true;
+  }
+
+  private mark(start: number, end: number): void {
+    for (let i = start; i < end; i += 1) this.claimed[i] = 1;
+  }
+}
+
+function attributeSystem(input: SystemAttributionInput): SourceEstimate[] {
+  const systemPrompt = typeof input.systemPrompt === "string" ? input.systemPrompt : "";
+  const options = (input.options ?? {}) as BuildSystemPromptOptions;
+  if (!input.matchesCurrent) {
+    return [finalSystemRow(systemPrompt)];
+  }
+  const claimant = new SpanClaimant(systemPrompt);
+  const rows: SourceEstimate[] = [];
+
+  const customPrompt = typeof options.customPrompt === "string" ? options.customPrompt : "";
+  const hasCustom = customPrompt.length > 0;
+  if (hasCustom) {
+    rows.push(systemRow("system:custom-prompt", "system", "Custom system prompt", "attributed", claimant.claim(customPrompt), 1));
+  }
+
+  const contextFiles = Array.isArray(options.contextFiles) ? options.contextFiles : [];
+  contextFiles.forEach((file, index) => {
+    if (!file) return;
+    const content = typeof file.content === "string" ? file.content : "";
+    const label = typeof file.path === "string" && file.path.length > 0 ? sanitizePathLabel(file.path, options.cwd) : "Instruction file";
+    rows.push(systemRow(`system:instruction:${index}`, "instructions", label, "attributed", claimant.claim(content), 1));
+  });
+
+  const append = typeof options.appendSystemPrompt === "string" ? options.appendSystemPrompt : "";
+  if (append.length > 0) {
+    rows.push(systemRow("system:append", "system", "Append system prompt", "attributed", claimant.claim(append), 1));
+  }
+
+  const skills = Array.isArray(options.skills) ? options.skills : [];
+  const selectedTools = Array.isArray(options.selectedTools) ? options.selectedTools : DEFAULT_TOOLS;
+  if (selectedTools.includes("read") && skills.length > 0) {
+    const catalog = formatSkillsForPrompt(skills as Skill[]);
+    const visibleCount = skills.filter((skill) => skill?.disableModelInvocation !== true).length;
+    rows.push(systemRow("system:skill-catalog", "skills", "Skill catalog", "attributed", claimant.claim(catalog), visibleCount));
+  }
+
+  if (!hasCustom) {
+    const snippets = options.toolSnippets;
+    if (snippets && typeof snippets === "object") {
+      const names = Object.keys(snippets);
+      if (names.length > 0) {
+        let chars = 0;
+        let count = 0;
+        for (const name of names) {
+          const snippet = (snippets as Record<string, unknown>)[name];
+          if (typeof snippet === "string" && snippet.length > 0) {
+            chars += claimant.claim(snippet);
+            count += 1;
+          }
+        }
+        rows.push(systemRow("system:tool-snippets", "system", "Tool prompt snippets", "attributed", chars, count));
+      }
+    }
+    const guidelines = Array.isArray(options.promptGuidelines) ? options.promptGuidelines : [];
+    if (guidelines.length > 0) {
+      let chars = 0;
+      let count = 0;
+      for (const guideline of guidelines) {
+        if (typeof guideline === "string" && guideline.trim().length > 0) {
+          chars += claimant.claim(guideline);
+          count += 1;
+        }
+      }
+      rows.push(systemRow("system:guidelines", "system", "Prompt guidelines", "attributed", chars, count));
+    }
+  }
+
+  const cwd = typeof options.cwd === "string" ? options.cwd.replace(/\\/g, "/") : "";
+  if (cwd.length > 0) {
+    rows.push(systemRow("system:cwd", "system", sanitizePathLabel(cwd, options.cwd), "attributed", claimant.claim(cwd), 1));
+  }
+
+  const remainder = claimant.unclaimed();
+  if (remainder > 0) {
+    rows.push(systemRow("system:remainder", "system", "Pi core, wrappers, or extension changes", "unattributed", remainder, 1));
+  }
+  return rows;
+}
+
+function finalSystemRow(systemPrompt: string): SourceEstimate {
+  const chars = systemPrompt.length;
+  return {
+    key: "system:final",
+    category: "system",
+    label: "Final system prompt",
+    attribution: "unattributed",
+    characters: estimatedValue(chars),
+    tokens: estimatedValue(estimateTokens(chars)),
+    itemCount: recordedValue(1),
+    warning: "system-digest-mismatch",
+  };
+}
+
+function systemRow(key: string, category: SourceCategory, label: string, attribution: Attribution, chars: number, items: number): SourceEstimate {
+  return {
+    key,
+    category,
+    label,
+    attribution,
+    characters: recordedValue(chars),
+    tokens: estimatedValue(estimateTokens(chars)),
+    itemCount: recordedValue(items),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Message traversal
+// ---------------------------------------------------------------------------
+
+interface AccumulatedRow {
+  readonly key: string;
+  readonly category: SourceCategory;
+  readonly label: string;
+  readonly attribution: Attribution;
+  chars: number;
+  count: number;
+  failed: boolean;
+  warning?: WarningCode;
+}
+
+interface MessageAccumulator {
+  readonly rows: Map<string, AccumulatedRow>;
+  images: number;
+}
+
+function createAccumulator(): MessageAccumulator {
+  return { rows: new Map(), images: 0 };
+}
+
+function addRow(
+  acc: MessageAccumulator,
+  key: string,
+  category: SourceCategory,
+  label: string,
+  attribution: Attribution,
+  chars: number,
+  count: number,
+  warning?: WarningCode,
+  failed = false,
+): void {
+  const existing = acc.rows.get(key);
+  if (existing) {
+    existing.chars += chars;
+    existing.count += count;
+    if (failed) existing.failed = true;
+    if (warning !== undefined && existing.warning === undefined) existing.warning = warning;
+    return;
+  }
+  acc.rows.set(key, { key, category, label, attribution, chars, count, failed, warning });
+}
+
+function accumulatorRows(acc: MessageAccumulator): SourceEstimate[] {
+  const rows: SourceEstimate[] = [];
+  for (const row of acc.rows.values()) {
+    rows.push({
+      key: row.key,
+      category: row.category,
+      label: row.label,
+      attribution: row.attribution,
+      characters: row.failed ? unavailableValue() : recordedValue(row.chars),
+      tokens: row.failed ? unavailableValue() : estimatedValue(estimateTokens(row.chars)),
+      itemCount: recordedValue(row.count),
+      warning: row.warning,
+    });
+  }
+  if (acc.images > 0) {
+    const chars = estimateImageCharacters(acc.images);
+    rows.push({
+      key: "msg:images",
+      category: "images",
+      label: "Images",
+      attribution: "attributed",
+      characters: estimatedValue(chars),
+      tokens: estimatedValue(estimateTokens(chars)),
+      itemCount: recordedValue(acc.images),
+    });
+  }
+  return rows;
+}
+
+function attributeMessages(messages: readonly AgentMessage[], promptSource: PromptSource | undefined, skillReads: ReadonlyMap<string, string> | undefined): SourceEstimate[] {
+  const acc = createAccumulator();
+  let currentPromptIndex = -1;
+  for (let i = 0; i < messages.length; i += 1) {
+    if ((messages[i] as AnyMessage)?.role === "user") currentPromptIndex = i;
+  }
+  for (let i = 0; i < messages.length; i += 1) {
+    const message = messages[i] as AnyMessage;
+    const role = message.role;
+    switch (role) {
+      case "user":
+        visitUser(message, i === currentPromptIndex, promptSource, acc);
+        break;
+      case "assistant":
+        visitAssistant(message, acc);
+        break;
+      case "toolResult":
+        visitToolResult(message, skillReads, acc);
+        break;
+      case "custom":
+        visitCustom(message, acc);
+        break;
+      case "bashExecution":
+        visitBash(message, acc);
+        break;
+      case "branchSummary": {
+        const summary = typeof message.summary === "string" ? message.summary : "";
+        addRow(acc, "msg:branch-summary", "summary", "Branch summary", "attributed", summary.length, 1);
+        break;
+      }
+      case "compactionSummary": {
+        const summary = typeof message.summary === "string" ? message.summary : "";
+        addRow(acc, "msg:compaction-summary", "summary", "Compaction summary", "unattributed", summary.length, 1);
+        break;
+      }
+      default:
+        visitUnknown(message, acc);
+        break;
+    }
+  }
+  return accumulatorRows(acc);
+}
+
+function visitUser(message: AnyMessage, isCurrent: boolean, promptSource: PromptSource | undefined, acc: MessageAccumulator): void {
+  const chars = contentLength(message.content, acc);
+  if (isCurrent && promptSource?.kind === "skill") {
+    addRow(acc, "msg:skill-prompt", "skills", `Skill: ${sanitizeLabel(promptSource.name)}`, "attributed", chars, 1);
+  } else if (isCurrent && promptSource?.kind === "prompt") {
+    addRow(acc, "msg:prompt-template", "prompts", `Prompt template: ${sanitizeLabel(promptSource.name)}`, "attributed", chars, 1);
+  } else {
+    addRow(acc, "msg:user", "conversation", "User history", "attributed", chars, 1);
+  }
+}
+
+function visitAssistant(message: AnyMessage, acc: MessageAccumulator): void {
+  const content = Array.isArray(message.content) ? message.content : [];
+  let textChars = 0;
+  let thinkingChars = 0;
+  let thinkingBlocks = 0;
+  let callChars = 0;
+  let calls = 0;
+  let failed = false;
+  for (const block of content) {
+    if (!block || typeof block !== "object") continue;
+    const value = block as Record<string, unknown>;
+    if (value.type === "text" && typeof value.text === "string") {
+      textChars += value.text.length;
+    } else if (value.type === "thinking" && typeof value.thinking === "string") {
+      thinkingChars += value.thinking.length;
+      thinkingBlocks += 1;
+    } else if (value.type === "toolCall") {
+      calls += 1;
+      const count = countJsonCharacters(value.arguments);
+      if (count === null) failed = true;
+      else callChars += count;
+    }
+  }
+  if (textChars > 0) addRow(acc, "msg:assistant", "assistant", "Assistant history", "attributed", textChars, 1);
+  if (thinkingBlocks > 0) addRow(acc, "msg:thinking", "thinking", "Assistant thinking", "attributed", thinkingChars, thinkingBlocks);
+  if (calls > 0) addRow(acc, "msg:tool-call", "tool-call", "Tool calls", "attributed", callChars, calls, failed ? "serialization-unavailable" : undefined, failed);
+}
+
+function visitToolResult(message: AnyMessage, skillReads: ReadonlyMap<string, string> | undefined, acc: MessageAccumulator): void {
+  const chars = contentLength(message.content, acc);
+  const toolCallId = typeof message.toolCallId === "string" ? message.toolCallId : "";
+  const matchedSkill = toolCallId.length > 0 ? skillReads?.get(toolCallId) : undefined;
+  if (matchedSkill) {
+    const name = sanitizeLabel(matchedSkill);
+    addRow(acc, `msg:skill-read:${name}`, "skills", `Skill body: ${name}`, "attributed", chars, 1);
+  } else {
+    addRow(acc, "msg:tool-result", "tool-result", "Tool results", "attributed", chars, 1);
+  }
+}
+
+function visitCustom(message: AnyMessage, acc: MessageAccumulator): void {
+  const customType = typeof message.customType === "string" ? message.customType : "";
+  const chars = contentLength(message.content, acc);
+  if (customType === "pi-memory-context") {
+    addRow(acc, "msg:memory:pi-memory-context", "memory", "Memory context", "attributed", chars, 1);
+  } else if (customType === "pi-session-search-primer") {
+    addRow(acc, "msg:memory:pi-session-search-primer", "memory", "Session search primer", "attributed", chars, 1);
+  } else if (customType === "knowledge-overview") {
+    addRow(acc, "msg:memory:knowledge-overview", "memory", "Knowledge overview", "attributed", chars, 1);
+  } else if (customType === "context-prune-summary") {
+    addRow(acc, "msg:prune-summary", "summary", "Context-prune summary", "unattributed", chars, 1);
+  } else {
+    const safe = sanitizeLabel(customType.length > 0 ? customType : "unavailable");
+    addRow(acc, `msg:custom:${safe}`, "custom", `Extension: ${safe}`, "attributed", chars, 1);
+  }
+}
+
+function visitBash(message: AnyMessage, acc: MessageAccumulator): void {
+  if (message.excludeFromContext === true) return;
+  const command = typeof message.command === "string" ? message.command : "";
+  const output = typeof message.output === "string" ? message.output : "";
+  addRow(acc, "msg:bash", "tool-result", "Bash execution", "attributed", command.length + output.length, 1);
+}
+
+function visitUnknown(message: unknown, acc: MessageAccumulator): void {
+  const count = countJsonCharacters(message);
+  addRow(acc, "msg:unknown", "unattributed", "Unknown message", "unattributed", count ?? 0, 1, count === null ? "serialization-unavailable" : undefined, count === null);
+}
+
+/** Counts text characters and image blocks without returning either value. */
+function contentLength(content: unknown, acc: MessageAccumulator): number {
+  if (typeof content === "string") return content.length;
+  if (!Array.isArray(content)) return 0;
+  let chars = 0;
+  for (const block of content) {
+    if (!block || typeof block !== "object") continue;
+    const value = block as Record<string, unknown>;
+    if (value.type === "text" && typeof value.text === "string") chars += value.text.length;
+    else if (value.type === "image") acc.images += 1;
+  }
+  return chars;
+}
+
+// ---------------------------------------------------------------------------
+// Tool definitions
+// ---------------------------------------------------------------------------
+
+function attributeTools(activeTools: readonly string[], allTools: readonly ToolInfo[], cwd: string | undefined): SourceEstimate[] {
+  const byName = new Map<string, ToolInfo>();
+  for (const tool of allTools ?? []) {
+    if (tool && typeof tool.name === "string") byName.set(tool.name, tool);
+  }
+  const groups = new Map<string, { label: string; chars: number; count: number; failed: boolean }>();
+  for (const name of activeTools ?? []) {
+    const tool = byName.get(name);
+    if (!tool) continue;
+    const label = toolSourceLabel(tool.sourceInfo, cwd);
+    const chars = countJsonCharacters({ name: tool.name, description: tool.description, parameters: tool.parameters });
+    const key = `tools:${label}`;
+    let group = groups.get(key);
+    if (!group) {
+      group = { label, chars: 0, count: 0, failed: false };
+      groups.set(key, group);
+    }
+    group.count += 1;
+    if (chars === null) group.failed = true;
+    else group.chars += chars;
+  }
+  const rows: SourceEstimate[] = [];
+  for (const group of groups.values()) {
+    rows.push({
+      key: `tools:${group.label}`,
+      category: "tools",
+      label: `Tools: ${group.label}`,
+      attribution: "attributed",
+      characters: group.failed ? unavailableValue() : recordedValue(group.chars),
+      tokens: group.failed ? unavailableValue() : estimatedValue(estimateTokens(group.chars)),
+      itemCount: recordedValue(group.count),
+      warning: group.failed ? "serialization-unavailable" : undefined,
+    });
+  }
+  return rows;
+}
+
+function toolSourceLabel(sourceInfo: ToolInfo["sourceInfo"] | undefined, cwd: string | undefined): string {
+  if (!sourceInfo) return "pi built-in";
+  if (sourceInfo.source === "builtin") return "pi built-in";
+  if (sourceInfo.source === "sdk") return "pi sdk";
+  const raw =
+    typeof sourceInfo.path === "string" && sourceInfo.path.length > 0
+      ? sourceInfo.path
+      : typeof sourceInfo.source === "string"
+        ? sourceInfo.source
+        : "";
+  if (!raw) return "unavailable";
+  const match = /^<([^:>]+):([^>]+)>/.exec(raw);
+  if (match) return sanitizeLabel(`${match[1]}/${match[2]}`);
+  return sanitizePathLabel(raw, cwd ?? process.cwd());
+}
+
+// ---------------------------------------------------------------------------
+// Row merging
+// ---------------------------------------------------------------------------
+
+function mergeSanitizedRows(rows: readonly SourceEstimate[]): SourceEstimate[] {
+  const merged = new Map<string, SourceEstimate>();
+  for (const row of rows) {
+    const existing = merged.get(row.key);
+    if (!existing) {
+      merged.set(row.key, row);
+      continue;
+    }
+    merged.set(row.key, mergeRow(existing, row));
+  }
+  return [...merged.values()];
+}
+
+function mergeRow(a: SourceEstimate, b: SourceEstimate): SourceEstimate {
+  const charsA = a.characters.value;
+  const charsB = b.characters.value;
+  const bothNumeric = typeof charsA === "number" && typeof charsB === "number";
+  const itemA = a.itemCount.value;
+  const itemB = b.itemCount.value;
+  return {
+    key: a.key,
+    category: a.category,
+    label: a.label,
+    attribution: a.attribution,
+    characters: bothNumeric ? recordedValue(charsA + charsB) : unavailableValue(),
+    tokens: bothNumeric ? estimatedValue(estimateTokens(charsA + charsB)) : unavailableValue(),
+    itemCount: typeof itemA === "number" && typeof itemB === "number" ? recordedValue(itemA + itemB) : unavailableValue(),
+    warning: a.warning ?? b.warning,
+  };
+}
