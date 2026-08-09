@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { providerUsageRecord, unavailableValue } from "./estimate.ts";
 import type {
+  LabeledValue,
   ProviderUsageRecord,
   RequestAttribution,
   RuntimeAggregate,
@@ -65,10 +66,13 @@ interface Draft {
   ambiguityCounted: boolean;
 }
 
+/** Mutable accumulator for provider usage totals. The snapshot returns the readonly shape. */
+type MutableUsageTotals = { -readonly [K in keyof ProviderUsageRecord]: LabeledValue };
+
 interface AggregateState {
   eligibleRequests: number;
   completeProviderUsage: number;
-  providerUsageTotals: ProviderUsageRecord;
+  providerUsageTotals: MutableUsageTotals;
   estimatedCharacters: Record<string, number>;
   excludedProviderCalls: number;
   correlationFailures: number;
@@ -91,7 +95,7 @@ const UNAVAILABLE_MODEL: SafeModelRecord = {
   measurement: "unavailable",
 };
 
-function zeroTotals(): ProviderUsageRecord {
+function zeroTotals(): MutableUsageTotals {
   return {
     input: unavailableValue(),
     output: unavailableValue(),
@@ -144,7 +148,7 @@ function copyUsage(message: Record<string, unknown>): ProviderUsageRecord | null
   return hasFinite ? record : null;
 }
 
-function addToTotals(totals: ProviderUsageRecord, usage: ProviderUsageRecord): void {
+function addToTotals(totals: MutableUsageTotals, usage: ProviderUsageRecord): void {
   for (const key of USAGE_KEYS) {
     const value = usage[key].value;
     if (value === null) continue;
@@ -184,7 +188,8 @@ export function createAttributionLedger(
     correlationFailures: 0,
   };
 
-  function reset(): void {
+  /** Resets request state and cumulative counters. Keeps the runtime digest key. */
+  function resetCounters(): void {
     runOrigin = undefined;
     runActive = false;
     runEligible = false;
@@ -193,7 +198,6 @@ export function createAttributionLedger(
     treeWindow = false;
     current = null;
     sequence = 0;
-    digestKey = undefined;
     aggregate.eligibleRequests = 0;
     aggregate.completeProviderUsage = 0;
     aggregate.providerUsageTotals = zeroTotals();
@@ -237,7 +241,7 @@ export function createAttributionLedger(
       aggregate.completeProviderUsage += 1;
       addToTotals(aggregate.providerUsageTotals, usage);
     }
-    if (draft.ambiguous) {
+    if (draft.ambiguityCounted) {
       return;
     }
     const identity = messageIdentity(message);
@@ -278,7 +282,7 @@ export function createAttributionLedger(
 
   return {
     observeSessionStart(): void {
-      reset();
+      resetCounters();
       digestKey = randomBytes(32).toString("hex");
     },
 
@@ -315,7 +319,7 @@ export function createAttributionLedger(
 
     observeProviderRequest(model: SafeModelRecord): void {
       const safe = sanitizeSafeModel(model);
-      if (!current || current.status !== "pending") {
+      if (!runActive || !current || current.status !== "pending") {
         aggregate.excludedProviderCalls += 1;
         return;
       }
@@ -356,19 +360,20 @@ export function createAttributionLedger(
 
     observeTree(): void {
       treeWindow = false;
-      reset();
+      resetCounters();
     },
 
     observeBeforeSwitch(): void {
-      reset();
+      resetCounters();
     },
 
     observeBeforeFork(): void {
-      reset();
+      resetCounters();
     },
 
     observeShutdown(): void {
-      reset();
+      resetCounters();
+      digestKey = undefined;
     },
 
     getDigestKey(): string | undefined {
