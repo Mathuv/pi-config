@@ -27,6 +27,8 @@ import type {
 
 export interface LedgerSnapshot {
   readonly latest: RequestAttribution | null;
+  /** Provider observations on the latest request. Null when no request exists. */
+  readonly providerAttempts: number | null;
   readonly aggregate: RuntimeAggregate;
 }
 
@@ -383,6 +385,7 @@ export function createAttributionLedger(
     snapshot(): LedgerSnapshot {
       return {
         latest: current ? toRequest(current) : null,
+        providerAttempts: current ? current.providerAttempts : null,
         aggregate: toAggregate(),
       };
     },
