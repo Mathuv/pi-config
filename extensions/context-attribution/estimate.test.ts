@@ -122,7 +122,7 @@ test("detects URLs after cleaning leading controls and spaces", () => {
 test("redacts Windows root-relative absolute paths", () => {
   const label = sanitizeLabel("\\Users\\alice\\secret.txt");
   assert.match(label, /^<external>\/secret\.txt$/);
-  assert.doesNotMatch(label, /alice|secret|Users|\\/);
+  assert.doesNotMatch(label, /alice|Users|\\/);
 });
 
 test("keeps image estimates finite for finite counts", () => {
