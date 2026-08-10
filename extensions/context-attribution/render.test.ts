@@ -382,6 +382,25 @@ test("shows provider attempts only when a retry occurred", () => {
   assert.ok(!normalText.includes("Provider attempts:"));
 });
 
+test("non-URL model identifiers never render query or fragment content", () => {
+  const text = renderReport(
+    report({
+      latest: request({
+        model: {
+          provider: "openai-codex?token=RENDER_PROVIDER_MARKER#frag",
+          api: "/external/api?token=RENDER_PATH_MARKER#frag",
+          model: "gpt-5.6-sol?token=RENDER_MODEL_MARKER#frag",
+          measurement: "recorded",
+        },
+      }),
+    }),
+  );
+  for (const marker of ["RENDER_PROVIDER_MARKER", "RENDER_PATH_MARKER", "RENDER_MODEL_MARKER", "#frag", "?token="]) {
+    assert.ok(!text.includes(marker), `rendered report leaked ${marker}`);
+  }
+  assert.ok(text.includes("Model: openai-codex / <external>/api / gpt-5.6-sol [recorded]"));
+});
+
 test("keeps secret markers out of every rendered dynamic value", () => {
   // Raw unsafe values pass through the attribution boundary first. The
   // boundary sanitizes each dynamic part; the renderer never sees the raw

@@ -626,6 +626,32 @@ test("a model identifier with URL credentials or an absolute path is sanitized b
   }
 });
 
+test("non-URL query and fragment data never enters the ledger from model fields", () => {
+  const ledger = createAttributionLedger();
+  startRun(ledger);
+  ledger.observeContext([sourceRow("system:remainder", 100)]);
+  ledger.observeProviderRequest({
+    provider: "openai-codex?token=PROVIDER_QUERY_MARKER#frag",
+    api: "/external/api?token=PATH_QUERY_MARKER#frag",
+    model: "gpt-5.6-sol?token=MODEL_QUERY_MARKER#frag",
+    measurement: "recorded",
+  });
+  ledger.observeMessageEnd(assistantMessage({ api: "/external/api", model: "gpt-5.6-sol" }));
+  const snapshot = ledger.snapshot();
+  const serialized = JSON.stringify(snapshot);
+  for (const marker of ["PROVIDER_QUERY_MARKER", "PATH_QUERY_MARKER", "MODEL_QUERY_MARKER", "#frag", "?token="]) {
+    assert.ok(!serialized.includes(marker), `the ledger snapshot leaked ${marker}`);
+  }
+  assert.deepEqual(snapshot.latest?.model, {
+    provider: "openai-codex",
+    api: "<external>/api",
+    model: "gpt-5.6-sol",
+    measurement: "recorded",
+  });
+  // The sanitized identity still matches the finalized assistant message.
+  assert.equal(snapshot.latest?.correlation, "recorded");
+});
+
 test("a canceled compaction does not suppress the next idle run", () => {
   const ledger = createAttributionLedger();
   startRun(ledger);

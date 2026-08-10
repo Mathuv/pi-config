@@ -58,6 +58,19 @@ test("sanitizes labels and removes sensitive path and URL components", () => {
   assert.ok(sanitizeLabel("x".repeat(200)).length <= 120);
 });
 
+test("removes query and fragment data from plain identifiers and path basenames", () => {
+  assert.equal(sanitizeLabel("gpt-5.6-sol?token=MODEL_QUERY_MARKER#frag"), "gpt-5.6-sol");
+  assert.equal(sanitizeLabel("gpt-5.6-sol?token=MODEL_QUERY_MARKER"), "gpt-5.6-sol");
+  assert.equal(sanitizeLabel("gpt-5.6-sol#frag"), "gpt-5.6-sol");
+  assert.equal(sanitizeLabel("openai-codex?token=PROVIDER_QUERY_MARKER"), "openai-codex");
+  assert.equal(
+    sanitizePathLabel("/external/api?token=PATH_QUERY_MARKER#frag", "/Users/alice/project", "/Users/alice"),
+    "<external>/api",
+  );
+  assert.equal(sanitizeLabel("/external/api?token=PATH_QUERY_MARKER#frag"), "<external>/api");
+  assert.doesNotMatch(sanitizeLabel("gpt-5.6-sol?token=MODEL_QUERY_MARKER#frag"), /MODEL_QUERY_MARKER|#frag|\?token=/);
+});
+
 test("runtime HMAC digest is separate from report data", async () => {
   const digest = await createRuntimeDigest("SAFE_FIXTURE_ONLY", "runtime-only-secret");
   assert.match(digest, /^[a-f0-9]{64}$/);
