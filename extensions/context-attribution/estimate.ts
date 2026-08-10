@@ -17,15 +17,18 @@ function finiteValue(value: number | null | undefined, measurement: "recorded" |
 export function providerUsageRecord(usage: Partial<Record<keyof ProviderUsageRecord, number>> | null | undefined): ProviderUsageRecord { return { input: providerReportedValue(usage?.input), output: providerReportedValue(usage?.output), cacheRead: providerReportedValue(usage?.cacheRead), cacheWrite: providerReportedValue(usage?.cacheWrite), cacheWrite1h: providerReportedValue(usage?.cacheWrite1h), reasoning: providerReportedValue(usage?.reasoning), totalTokens: providerReportedValue(usage?.totalTokens) }; }
 export function sanitizeLabel(value: unknown): string {
   if (typeof value !== "string") return "unavailable";
-  const cleaned = cleanText(value);
+  const cleaned = cleanText(decodeRepeatedly(value));
   if (!cleaned) return "unavailable";
   if (looksLikeUrl(cleaned)) return sanitizeUrlLabel(cleaned);
+  if (looksLikeEmbeddedCredential(cleaned)) return "unavailable";
   if (isPathValue(cleaned)) return sanitizePathLabel(cleaned);
-  return truncate(stripQueryAndFragment(cleaned));
+  const stripped = stripQueryAndFragment(cleaned);
+  if (!stripped) return "unavailable";
+  return truncate(stripped);
 }
 export function sanitizePathLabel(value: unknown, cwd = process.cwd(), home = process.env.HOME ?? ""): string {
   if (typeof value !== "string") return "unavailable";
-  const cleaned = stripQueryAndFragment(cleanText(value));
+  const cleaned = stripQueryAndFragment(cleanText(decodeRepeatedly(value)));
   if (!cleaned) return "unavailable";
   const style = isWindowsPath(cleaned) || isWindowsPath(cwd) || isWindowsPath(home) ? win32 : posix;
   const normalizedCwd = cwd || process.cwd();
@@ -37,15 +40,36 @@ export function sanitizePathLabel(value: unknown, cwd = process.cwd(), home = pr
   return truncatePath("<external>", style.basename(normalized));
 }
 export function sanitizeUrlLabel(value: unknown): string {
-  if (typeof value !== "string" || /[\u0000-\u001f\u007f-\u009f]/.test(value)) return "unavailable";
+  if (typeof value !== "string") return "unavailable";
+  const decoded = decodeRepeatedly(value);
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(decoded)) return "unavailable";
   try {
-    const url = new URL(value);
+    const url = new URL(decoded);
     if (url.protocol !== "http:" && url.protocol !== "https:" && url.protocol !== "mailto:") return "unavailable";
     url.username = ""; url.password = ""; url.search = ""; url.hash = "";
     return truncate(url.toString().replace(/\/$/, ""));
   } catch { return "unavailable"; }
 }
 function cleanText(value: string): string { return value.replace(/[\u0000-\u001f\u007f-\u009f]+/g, " ").replace(/\s+/g, " ").trim(); }
+/** Decodes percent-encoding until stable so an encoded delimiter cannot hide query, fragment, or credential data. */
+function decodeRepeatedly(value: string): string {
+  let current = value;
+  for (let depth = 0; depth < 5 && current.includes("%"); depth += 1) {
+    let next: string;
+    try {
+      next = decodeURIComponent(current);
+    } catch {
+      return current;
+    }
+    if (next === current) return current;
+    current = next;
+  }
+  return current;
+}
+/** True when a value carries URL credential or scheme-separator structure that URL classification rejected. */
+function looksLikeEmbeddedCredential(value: string): boolean {
+  return value.includes("://") || /:[^/@\s]*@/.test(value);
+}
 /** Removes a query marker, a fragment marker, and everything after the first one. */
 function stripQueryAndFragment(value: string): string {
   const markers = [value.indexOf("?"), value.indexOf("#")].filter((index) => index >= 0);
