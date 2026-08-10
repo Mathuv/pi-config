@@ -689,3 +689,50 @@ test("a canceled tree operation does not suppress the next idle run", () => {
   assert.equal(report.aggregate.excludedProviderCalls, 0);
 });
 
+test("encoded and control-obfuscated model values never enter the ledger", () => {
+  const ledger = createAttributionLedger();
+  startRun(ledger);
+  ledger.observeContext([sourceRow("system:remainder", 100)]);
+  ledger.observeProviderRequest({
+    provider: "openai-codex%3Ftoken=ENC_PROVIDER_QUERY",
+    api: "https%3A%2F%2Fuser%3Apass%40example.test%2Fapi%3Fq%3DENC_API",
+    model: "h\u0000ttps://user:pass@example.test/model?q=CONTROL_QUERY",
+    measurement: "recorded",
+  });
+  ledger.observeMessageEnd(assistantMessage());
+  const snapshot = ledger.snapshot();
+  const serialized = JSON.stringify(snapshot);
+  for (const marker of ["ENC_PROVIDER_QUERY", "ENC_API", "CONTROL_QUERY", "user:pass", "%3F", "%2F", "%40", "%23"]) {
+    assert.ok(!serialized.includes(marker), `the ledger snapshot leaked ${marker}`);
+  }
+  assert.deepEqual(snapshot.latest?.model, {
+    provider: "openai-codex",
+    api: "https://example.test/api",
+    model: "unavailable",
+    measurement: "unavailable",
+  });
+});
+
+test("query-only and fragment-only model values become unavailable, never empty recorded labels", () => {
+  const ledger = createAttributionLedger();
+  startRun(ledger);
+  ledger.observeContext([sourceRow("system:remainder", 100)]);
+  ledger.observeProviderRequest({
+    provider: "?token=QUERY_ONLY",
+    api: "#fragment-only",
+    model: "gpt-5.6-sol",
+    measurement: "recorded",
+  });
+  ledger.observeMessageEnd(assistantMessage());
+  const snapshot = ledger.snapshot();
+  assert.deepEqual(snapshot.latest?.model, {
+    provider: "unavailable",
+    api: "unavailable",
+    model: "gpt-5.6-sol",
+    measurement: "unavailable",
+  });
+  const serialized = JSON.stringify(snapshot);
+  assert.ok(!serialized.includes('""'), "the ledger snapshot stored an empty recorded label");
+  assert.ok(!serialized.includes("QUERY_ONLY"));
+  assert.ok(!serialized.includes("fragment-only"));
+});

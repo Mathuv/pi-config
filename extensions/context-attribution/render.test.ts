@@ -646,3 +646,58 @@ test("the overlay height adapts after a terminal resize", async () => {
   assert.ok(bottom.includes(lastLine), "the last report line is unreachable after a resize");
 });
 
+test("encoded and empty-base model values render safe labels or unavailable", () => {
+  const text = renderReport(
+    report({
+      latest: request({
+        model: {
+          provider: "openai-codex%3Ftoken=RENDER_ENC_PROVIDER",
+          api: "https%3A%2F%2Fuser%3Apass%40example.test%2Fapi%3Fq%3DRENDER_ENC_API",
+          model: "?query-only",
+          measurement: "recorded",
+        },
+      }),
+    }),
+  );
+  for (const marker of ["RENDER_ENC_PROVIDER", "RENDER_ENC_API", "user:pass", "%3F", "%2F", "%40"]) {
+    assert.ok(!text.includes(marker), `rendered report leaked ${marker}`);
+  }
+  assert.ok(!text.includes("?query-only"));
+  assert.ok(text.includes("Model: openai-codex / https://example.test/api / unavailable [recorded]"));
+});
+
+test("a query-only model renders unavailable through the real ledger", () => {
+  const ledger = createAttributionLedger();
+  startRun(ledger);
+  ledger.observeContext([sourceRow("system:remainder", "Remainder", 400)]);
+  ledger.observeProviderRequest({
+    provider: "?token=QUERY_ONLY",
+    api: "openai-responses",
+    model: "gpt-5.6-sol",
+    measurement: "recorded",
+  });
+  ledger.observeMessageEnd(assistantMessage());
+  const text = renderReport(ledger.snapshot());
+  assert.ok(text.includes("Model: unavailable"));
+  assert.ok(!text.includes("QUERY_ONLY"));
+  assert.ok(!text.includes(" / "));
+});
+
+test("a control-obfuscated credential model field never renders", () => {
+  const text = renderReport(
+    report({
+      latest: request({
+        model: {
+          provider: "h\u0000ttps://user:pass@example.test/provider?q=RENDER_CONTROL",
+          api: "openai-responses",
+          model: "gpt-5.6-sol",
+          measurement: "recorded",
+        },
+      }),
+    }),
+  );
+  for (const marker of ["RENDER_CONTROL", "user:pass", "example.test"]) {
+    assert.ok(!text.includes(marker), `rendered report leaked ${marker}`);
+  }
+  assert.ok(text.includes("Model: unavailable / openai-responses / gpt-5.6-sol [recorded]"));
+});

@@ -144,3 +144,44 @@ test("keeps image estimates finite for finite counts", () => {
   assert.equal(result >= 0, true);
   assert.equal(result, 0);
 });
+
+test("decodes encoded delimiters so model labels cannot hide query or fragment data", () => {
+  assert.equal(sanitizeLabel("openai-codex%3Ftoken=ENCODED_PROVIDER_QUERY"), "openai-codex");
+  assert.equal(sanitizeLabel("gpt%3Ftoken=ENCODED_MODEL_QUERY%23ENCODED_MODEL_FRAGMENT"), "gpt");
+  assert.equal(sanitizeLabel("gpt%3Ftoken%3DENCODED_MODEL_QUERY%23ENCODED_MODEL_FRAGMENT"), "gpt");
+  assert.equal(sanitizeLabel("/external/api%3Ftoken=PATH_ENC%23frag"), "<external>/api");
+  const label = sanitizeLabel("gpt%3Ftoken=ENCODED_MODEL_QUERY%23ENCODED_MODEL_FRAGMENT");
+  assert.doesNotMatch(label, /ENCODED|%3F|%23|\?|#/);
+});
+
+test("decodes nested-encoded delimiters before privacy normalization", () => {
+  assert.equal(sanitizeLabel("gpt%253Ftoken%253DNESTED_QUERY%2523frag"), "gpt");
+  assert.equal(sanitizeLabel("openai-codex%253Ftoken%253DNESTED_PROVIDER"), "openai-codex");
+  assert.equal(sanitizeLabel("%253Fquery-only"), "unavailable");
+});
+
+test("decodes fully-encoded credential URLs before sanitization", () => {
+  const label = sanitizeLabel("https%3A%2F%2Fuser%3Apass%40example.test%2Fmodel%3Fq%3DENC%23frag");
+  assert.equal(label, "https://example.test/model");
+  assert.doesNotMatch(label, /user|pass|ENC|%40|%3F|%23/);
+});
+
+test("rejects control-obfuscated URLs that cannot become a safe identifier", () => {
+  assert.equal(sanitizeLabel("h\u0000ttps://user:pass@example.test/model?q=CONTROL_QUERY#frag"), "unavailable");
+  assert.equal(sanitizeLabel("https\u0000//user:pass@example.test/model?q=CONTROL_QUERY#frag"), "unavailable");
+  const userinfo = sanitizeLabel("https://user\u0000:pass@example.test/model?q=CONTROL_QUERY#frag");
+  assert.doesNotMatch(userinfo, /user:pass|CONTROL_QUERY|#frag|@/);
+});
+
+test("treats query-only, fragment-only, and empty-base labels as unavailable", () => {
+  for (const value of ["?query-only", "#fragment-only", "?", "#", "%3Fquery-only", "%23fragment-only", "?q=1#f"]) {
+    assert.equal(sanitizeLabel(value), "unavailable", JSON.stringify(value));
+  }
+});
+
+test("keeps normal provider and model identifiers useful and stable", () => {
+  assert.equal(sanitizeLabel("openai-codex"), "openai-codex");
+  assert.equal(sanitizeLabel("gpt-5.6-sol"), "gpt-5.6-sol");
+  assert.equal(sanitizeLabel("deepseek-v4-flash"), "deepseek-v4-flash");
+  assert.equal(sanitizeLabel("openai-responses"), "openai-responses");
+});
