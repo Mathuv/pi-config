@@ -21,11 +21,11 @@ export function sanitizeLabel(value: unknown): string {
   if (!cleaned) return "unavailable";
   if (looksLikeUrl(cleaned)) return sanitizeUrlLabel(cleaned);
   if (isPathValue(cleaned)) return sanitizePathLabel(cleaned);
-  return truncate(cleaned);
+  return truncate(stripQueryAndFragment(cleaned));
 }
 export function sanitizePathLabel(value: unknown, cwd = process.cwd(), home = process.env.HOME ?? ""): string {
   if (typeof value !== "string") return "unavailable";
-  const cleaned = cleanText(value);
+  const cleaned = stripQueryAndFragment(cleanText(value));
   if (!cleaned) return "unavailable";
   const style = isWindowsPath(cleaned) || isWindowsPath(cwd) || isWindowsPath(home) ? win32 : posix;
   const normalizedCwd = cwd || process.cwd();
@@ -46,6 +46,12 @@ export function sanitizeUrlLabel(value: unknown): string {
   } catch { return "unavailable"; }
 }
 function cleanText(value: string): string { return value.replace(/[\u0000-\u001f\u007f-\u009f]+/g, " ").replace(/\s+/g, " ").trim(); }
+/** Removes a query marker, a fragment marker, and everything after the first one. */
+function stripQueryAndFragment(value: string): string {
+  const markers = [value.indexOf("?"), value.indexOf("#")].filter((index) => index >= 0);
+  const first = markers.length > 0 ? Math.min(...markers) : -1;
+  return first >= 0 ? value.slice(0, first) : value;
+}
 function isPathValue(value: string): boolean { return isAbsolute(value) || /^~(?:[\\/]|$)/.test(value) || isWindowsPath(value); }
 function isWindowsPath(value: string): boolean { return /^[A-Za-z]:[\\/]/.test(value) || /^\\/.test(value); }
 function looksLikeUrl(value: string): boolean { return /^[A-Za-z][A-Za-z0-9+.-]*:/.test(value) && !isWindowsPath(value); }
