@@ -75,6 +75,13 @@ export interface SystemAttributionInput {
 
 export interface AttributionInput {
   readonly system: SystemAttributionInput;
+  /**
+   * Safe system rows computed inside before_agent_start. When provided and
+   * the system digest still matches, attributeContext uses these rows
+   * instead of re-claiming spans from the raw system options. The rows are
+   * themselves attributeContext output, so raw options never cross hooks.
+   */
+  readonly precomputedSystemRows?: readonly SourceEstimate[];
   /** Used only during this call. Never cloned or retained. */
   readonly messages: readonly AgentMessage[];
   readonly promptSource?: PromptSource;
@@ -121,8 +128,12 @@ function safeDynamicLabel(value: unknown): string {
 
 /** One public facade that returns stable sanitized source rows. */
 export function attributeContext(input: AttributionInput): SourceEstimate[] {
+  const systemRows =
+    input.precomputedSystemRows !== undefined && input.system.matchesCurrent
+      ? input.precomputedSystemRows
+      : attributeSystem(input.system);
   return mergeSanitizedRows([
-    ...attributeSystem(input.system),
+    ...systemRows,
     ...attributeMessages(input.messages, input.promptSource, input.skillReads, input.currentPromptDigest, input.digestKey),
     ...attributeTools(input.activeTools, input.allTools, input.cwd),
   ]);

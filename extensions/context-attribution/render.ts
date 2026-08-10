@@ -259,15 +259,16 @@ export async function showContextAttribution(report: AttributionReport, ctx: Ext
   }
   await ctx.ui.custom<void>((tui, _theme, _keybindings, done) => {
     const view = new ScrollableReportView(text, () => done());
-    // The overlay caps the content at floor(rows * 0.8). The component must
-    // use the same height or the overlay slices the bottom lines away.
-    const height = Math.max(1, Math.floor((tui.terminal.rows || 24) * 0.8));
     const component = {
       get focused(): boolean {
         return true;
       },
       set focused(_value: boolean) {},
       render(width: number): string[] {
+        // The overlay caps the content at floor(rows * 0.8). Read the
+        // terminal height on every render so a resize while the overlay is
+        // open cannot leave the bottom lines unreachable.
+        const height = Math.max(1, Math.floor((tui.terminal.rows || 24) * 0.8));
         return view.render(width, height);
       },
       invalidate(): void {},

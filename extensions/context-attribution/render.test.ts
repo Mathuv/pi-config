@@ -55,6 +55,7 @@ function usageRecord(fields: Partial<Record<keyof ProviderUsageRecord, number>> 
 function request(overrides: Partial<RequestAttribution> = {}): RequestAttribution {
   return {
     sequence: 7,
+    turnIndex: null,
     status: "complete",
     correlation: "recorded",
     providerRequest: "recorded",
@@ -613,13 +614,13 @@ test("the overlay height adapts after a terminal resize", async () => {
     },
   };
   await showContextAttribution(rpt, { mode: "tui", ui } as unknown as ExtensionContext);
-  const terminal = { rows: 30 };
-  const component = capturedFactory!(terminal, {}, {}, () => {}) as {
+  const tui = { terminal: { rows: 30 } };
+  const component = capturedFactory!(tui, {}, {}, () => {}) as {
     render(width: number): string[];
     handleInput(data: string): void;
   };
   assert.equal(component.render(80).length, Math.floor(30 * 0.8));
-  terminal.rows = 12; // the terminal resizes while the overlay stays open
+  tui.terminal.rows = 12; // the terminal resizes while the overlay stays open
   assert.equal(component.render(80).length, Math.floor(12 * 0.8), "rows=12 height mismatch after resize");
   for (let i = 0; i < 300; i += 1) component.handleInput("\u001b[B");
   const bottom = component.render(80);

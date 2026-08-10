@@ -11,7 +11,7 @@
  * never registers after_provider_response or tool_result for content capture.
  */
 
-import type { BuildSystemPromptOptions, ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
   attributeContext,
   classifyPromptSource,
@@ -22,11 +22,12 @@ import {
 import { sanitizeLabel } from "./estimate.ts";
 import { createAttributionLedger } from "./ledger.ts";
 import { showContextAttribution } from "./render.ts";
+import type { SourceEstimate } from "./types.ts";
 
 export default function contextAttributionExtension(pi: ExtensionAPI): void {
   const ledger = createAttributionLedger();
 
-  let systemOptions: BuildSystemPromptOptions | undefined;
+  let systemRows: SourceEstimate[] | undefined;
   let systemPromptDigest: string | undefined;
   let promptSource: PromptSource | undefined;
   let currentPromptDigest: string | undefined;
@@ -35,7 +36,7 @@ export default function contextAttributionExtension(pi: ExtensionAPI): void {
 
   /** Clears all per-run capture state. The ledger keeps its own state. */
   function clearCapture(): void {
-    systemOptions = undefined;
+    systemRows = undefined;
     systemPromptDigest = undefined;
     promptSource = undefined;
     currentPromptDigest = undefined;
@@ -64,13 +65,28 @@ export default function contextAttributionExtension(pi: ExtensionAPI): void {
 
   pi.on("input", (event) => {
     ledger.observeInput(event.source);
-    promptSource = classifyPromptSource(event.text, pi.getCommands());
+    // A streaming steer or followUp delivers no new before_agent_start and
+    // must not relabel the original prompt classification.
+    if (event.streamingBehavior === undefined) {
+      promptSource = classifyPromptSource(event.text, pi.getCommands());
+    }
   });
 
   pi.on("before_agent_start", (event) => {
     const key = ledger.getDigestKey();
     if (typeof key !== "string") return;
-    systemOptions = event.systemPromptOptions;
+    // Convert the raw system options to sanitized numeric rows inside this
+    // hook call. Only the rows, digests, and safe labels cross the boundary.
+    systemRows = attributeContext({
+      system: {
+        systemPrompt: event.systemPrompt,
+        options: event.systemPromptOptions,
+        matchesCurrent: true,
+      },
+      messages: [],
+      activeTools: [],
+      allTools: [],
+    });
     systemPromptDigest = keyedDigest(event.systemPrompt, key);
     currentPromptDigest = keyedDigest(event.prompt, key);
     captureSkillDigests(event.systemPromptOptions.skills, key);
@@ -78,6 +94,10 @@ export default function contextAttributionExtension(pi: ExtensionAPI): void {
 
   pi.on("agent_start", () => {
     ledger.observeAgentStart();
+  });
+
+  pi.on("turn_start", (event) => {
+    ledger.observeTurnStart(event.turnIndex);
   });
 
   pi.on("context", (event, ctx) => {
@@ -90,9 +110,10 @@ export default function contextAttributionExtension(pi: ExtensionAPI): void {
     const sources = attributeContext({
       system: {
         systemPrompt,
-        options: systemOptions ?? { cwd: ctx.cwd },
+        options: { cwd: ctx.cwd },
         matchesCurrent,
       },
+      precomputedSystemRows: matchesCurrent ? systemRows : undefined,
       messages: event.messages,
       promptSource,
       currentPromptDigest,

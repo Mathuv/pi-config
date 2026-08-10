@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { providerUsageRecord, unavailableValue } from "./estimate.ts";
+import { providerUsageRecord, sanitizeLabel, unavailableValue } from "./estimate.ts";
 import type {
   LabeledValue,
   ProviderUsageRecord,
@@ -36,6 +36,7 @@ export interface AttributionLedger {
   observeSessionStart(reason?: string): void;
   observeInput(source: string): void;
   observeAgentStart(): void;
+  observeTurnStart(turnIndex: number): void;
   observeContext(sources: readonly SourceEstimate[]): void;
   observeProviderRequest(model: SafeModelRecord): void;
   observeMessageEnd(message: unknown): void;
@@ -55,6 +56,7 @@ type RequestStatus = "pending" | "complete" | "error" | "aborted" | "unavailable
 
 interface Draft {
   sequence: number;
+  turnIndex: number | null;
   status: RequestStatus;
   correlation: "recorded" | "unavailable";
   providerRequest: "recorded" | "unavailable";
@@ -110,10 +112,7 @@ function zeroTotals(): MutableUsageTotals {
 }
 
 function cleanModelField(value: unknown): string {
-  if (typeof value !== "string") return "unavailable";
-  const cleaned = value.replace(/[\u0000-\u001f\u007f-\u009f]+/g, "").trim();
-  if (!cleaned) return "unavailable";
-  return cleaned.length > 120 ? cleaned.slice(0, 119) + "…" : cleaned;
+  return sanitizeLabel(value);
 }
 
 function sanitizeSafeModel(value: unknown): SafeModelRecord {
@@ -134,10 +133,10 @@ function hasSubagentEnvironment(env: Readonly<Record<string, string | undefined>
 
 /** Extracts the normalized identity of a finalized assistant message. */
 function messageIdentity(message: Record<string, unknown>): { provider: string; api: string; model: string } | null {
-  const provider = typeof message.provider === "string" ? message.provider : "";
-  const api = typeof message.api === "string" ? message.api : "";
-  const model = typeof message.model === "string" ? message.model : "";
-  if (!provider || !api || !model) return null;
+  const provider = cleanModelField(message.provider);
+  const api = cleanModelField(message.api);
+  const model = cleanModelField(message.model);
+  if (provider === "unavailable" || api === "unavailable" || model === "unavailable") return null;
   return { provider, api, model };
 }
 
@@ -180,6 +179,7 @@ export function createAttributionLedger(
   let treeWindow = false;
   let current: Draft | null = null;
   let sequence = 0;
+  let currentTurnIndex: number | null = null;
   let digestKey: string | undefined = randomBytes(32).toString("hex");
   const aggregate: AggregateState = {
     eligibleRequests: 0,
@@ -200,6 +200,7 @@ export function createAttributionLedger(
     treeWindow = false;
     current = null;
     sequence = 0;
+    currentTurnIndex = null;
     aggregate.eligibleRequests = 0;
     aggregate.completeProviderUsage = 0;
     aggregate.providerUsageTotals = zeroTotals();
@@ -212,6 +213,7 @@ export function createAttributionLedger(
     sequence += 1;
     current = {
       sequence,
+      turnIndex: currentTurnIndex,
       status: "pending",
       correlation: ambiguous ? "unavailable" : "recorded",
       providerRequest: "unavailable",
@@ -261,6 +263,7 @@ export function createAttributionLedger(
   function toRequest(draft: Draft): RequestAttribution {
     return {
       sequence: draft.sequence,
+      turnIndex: draft.turnIndex,
       status: draft.status,
       correlation: draft.correlation,
       providerRequest: draft.providerRequest,
@@ -297,6 +300,11 @@ export function createAttributionLedger(
         if (value === "extension") suppressNextDraft = true;
         return;
       }
+      // An idle input opens a new run. A canceled compaction or tree
+      // operation emits no completion event, so its suppression window
+      // would otherwise suppress every later request.
+      compacting = false;
+      treeWindow = false;
       runOrigin = value;
     },
 
@@ -306,6 +314,12 @@ export function createAttributionLedger(
       if (current && current.status === "pending") current = null;
       runActive = true;
       runEligible = (runOrigin === "interactive" || runOrigin === "rpc") && !hasSubagentEnvironment(env);
+    },
+
+    observeTurnStart(turnIndex: number): void {
+      if (typeof turnIndex === "number" && Number.isFinite(turnIndex)) {
+        currentTurnIndex = turnIndex;
+      }
     },
 
     observeContext(sources: readonly SourceEstimate[]): void {
@@ -344,6 +358,7 @@ export function createAttributionLedger(
       runEligible = false;
       runOrigin = undefined;
       suppressNextDraft = false;
+      currentTurnIndex = null;
     },
 
     observeBeforeCompact(): void {
