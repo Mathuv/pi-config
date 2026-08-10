@@ -788,3 +788,23 @@ test("matches a keyed skill-path digest and rejects mismatched paths", () => {
   assert.equal(matchSkillPathDigest(path, undefined, matches), undefined);
   assert.equal(matchSkillPathDigest(path, key, undefined), undefined);
 });
+
+test("precomputed system rows replace span claiming when provided", () => {
+  const options = {
+    cwd: CWD,
+    contextFiles: [{ path: "AGENTS.md", content: "FILE_CONTENT_MARKER_11" }],
+    appendSystemPrompt: "APPEND_MARKER_22",
+  };
+  const prompt = buildPromptFixture(options);
+  const direct = attributeContext({ system: { systemPrompt: prompt, options, matchesCurrent: true }, messages: [], activeTools: [], allTools: [] });
+  const precomputed = attributeContext({
+    system: { systemPrompt: prompt, options: { cwd: CWD }, matchesCurrent: true },
+    precomputedSystemRows: direct,
+    messages: [],
+    activeTools: [],
+    allTools: [],
+  });
+  assert.deepEqual(precomputed, direct);
+  assert.equal(precomputed.some((row) => row.key === "system:instruction:0"), true);
+});
+

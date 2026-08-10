@@ -171,6 +171,7 @@ const REQUIRED_HOOKS = [
   "input",
   "before_agent_start",
   "agent_start",
+  "turn_start",
   "context",
   "before_provider_request",
   "message_end",
@@ -352,6 +353,7 @@ test("hooks return undefined and never mutate their events", () => {
     input: { type: "input", text: "hello", source: "interactive" },
     before_agent_start: { type: "before_agent_start", prompt: "hello", systemPrompt: SYSTEM_PROMPT, systemPromptOptions: SYSTEM_OPTIONS },
     agent_start: { type: "agent_start" },
+    turn_start: { type: "turn_start", turnIndex: 0 },
     context: { type: "context", messages: [{ role: "user", content: [{ type: "text", text: "hello" }], timestamp: 1 }] },
     before_provider_request: { type: "before_provider_request", payload: {} },
     message_end: { type: "message_end", message: assistantMessage() },
@@ -644,3 +646,131 @@ test("a read of an unknown path creates no skill row", async () => {
   assert.ok(!text.includes("Skill body:"), text);
   assert.ok(text.includes("Tool results"), text);
 });
+
+test("raw system options never outlive the before_agent_start hook", async () => {
+  const ext = createExtension();
+  let contextFilesReads = 0;
+  const proxyOptions = new Proxy(
+    { ...SYSTEM_OPTIONS },
+    {
+      get(target, prop, receiver) {
+        if (prop === "contextFiles") contextFilesReads += 1;
+        return Reflect.get(target, prop, receiver);
+      },
+    },
+  );
+  emit(ext, { type: "session_start", reason: "startup" });
+  emit(ext, { type: "input", text: "hello", source: "interactive" });
+  emit(ext, { type: "before_agent_start", prompt: "hello", systemPrompt: SYSTEM_PROMPT, systemPromptOptions: proxyOptions });
+  const readsAfterBeforeAgentStart = contextFilesReads;
+  emit(ext, { type: "agent_start" });
+  emit(ext, { type: "context", messages: [{ role: "user", content: [{ type: "text", text: "hello" }], timestamp: 1 }] });
+  emit(ext, { type: "before_provider_request", payload: {} });
+  emit(ext, { type: "message_end", message: assistantMessage() });
+  emit(ext, { type: "agent_settled" });
+  assert.equal(
+    contextFilesReads,
+    readsAfterBeforeAgentStart,
+    "the context hook re-read the raw system options retained by before_agent_start",
+  );
+});
+
+test("streaming steer and followUp inputs never overwrite the idle prompt classification", async () => {
+  const skillCommand: SlashCommandInfo = {
+    name: "skill:commit",
+    source: "skill",
+    sourceInfo: { path: "/tmp/skills/commit", source: "top-level", scope: "project", origin: "top-level" },
+  };
+  for (const streamingBehavior of ["steer", "followUp"] as const) {
+    const ext = createExtension({ commands: [skillCommand] });
+    emit(ext, { type: "session_start", reason: "startup" });
+    emit(ext, { type: "input", text: "hello", source: "interactive" });
+    emit(ext, { type: "before_agent_start", prompt: "hello", systemPrompt: SYSTEM_PROMPT, systemPromptOptions: SYSTEM_OPTIONS });
+    emit(ext, { type: "agent_start" });
+    emit(ext, { type: "input", text: "/skill:commit fix the bug", source: "interactive", streamingBehavior });
+    emit(ext, { type: "context", messages: [{ role: "user", content: [{ type: "text", text: "hello" }], timestamp: 1 }] });
+    emit(ext, { type: "before_provider_request", payload: {} });
+    emit(ext, { type: "message_end", message: assistantMessage() });
+    emit(ext, { type: "agent_settled" });
+    const { log } = await captureLog(() => invokeCommand(ext));
+    const text = log.join("\n");
+    assert.ok(!text.includes("Skill: commit"), `${streamingBehavior} relabeled the original plain prompt`);
+    assert.ok(text.includes("User history"), `${streamingBehavior} lost the plain prompt row`);
+  }
+});
+
+test("a streaming steer never removes an existing skill classification", async () => {
+  const skillCommand: SlashCommandInfo = {
+    name: "skill:commit",
+    source: "skill",
+    sourceInfo: { path: "/tmp/skills/commit", source: "top-level", scope: "project", origin: "top-level" },
+  };
+  const ext = createExtension({ commands: [skillCommand] });
+  emit(ext, { type: "session_start", reason: "startup" });
+  emit(ext, { type: "input", text: "/skill:commit fix the bug", source: "interactive" });
+  emit(ext, { type: "before_agent_start", prompt: "SKILL_BODY\n\nfix the bug", systemPrompt: SYSTEM_PROMPT, systemPromptOptions: SYSTEM_OPTIONS });
+  emit(ext, { type: "agent_start" });
+  emit(ext, { type: "input", text: "continue", source: "interactive", streamingBehavior: "steer" });
+  emit(ext, { type: "context", messages: [{ role: "user", content: [{ type: "text", text: "SKILL_BODY\n\nfix the bug" }], timestamp: 1 }] });
+  emit(ext, { type: "before_provider_request", payload: {} });
+  emit(ext, { type: "message_end", message: assistantMessage() });
+  emit(ext, { type: "agent_settled" });
+  const { log } = await captureLog(() => invokeCommand(ext));
+  const text = log.join("\n");
+  assert.ok(text.includes("Skill: commit"), "a plain steer removed the original skill classification");
+});
+
+test("a canceled compaction does not suppress the next foreground request", async () => {
+  const ext = createExtension();
+  emit(ext, { type: "session_start", reason: "startup" });
+  emit(ext, { type: "input", text: "hello", source: "interactive" });
+  emit(ext, { type: "before_agent_start", prompt: "hello", systemPrompt: SYSTEM_PROMPT, systemPromptOptions: SYSTEM_OPTIONS });
+  emit(ext, { type: "agent_start" });
+  emit(ext, { type: "context", messages: [{ role: "user", content: [{ type: "text", text: "hello" }], timestamp: 1 }] });
+  emit(ext, { type: "session_before_compact" });
+  emit(ext, { type: "before_provider_request", payload: {} });
+  // The compaction is canceled: session_compact never fires.
+  emit(ext, { type: "agent_settled" });
+  emit(ext, { type: "input", text: "hello again", source: "interactive" });
+  emit(ext, { type: "before_agent_start", prompt: "hello again", systemPrompt: SYSTEM_PROMPT, systemPromptOptions: SYSTEM_OPTIONS });
+  emit(ext, { type: "agent_start" });
+  emit(ext, { type: "context", messages: [{ role: "user", content: [{ type: "text", text: "hello again" }], timestamp: 2 }] });
+  emit(ext, { type: "before_provider_request", payload: {} });
+  emit(ext, { type: "message_end", message: assistantMessage() });
+  emit(ext, { type: "agent_settled" });
+  const { log } = await captureLog(() => invokeCommand(ext));
+  const text = log.join("\n");
+  assert.ok(text.includes("Context attribution — latest foreground request #2"), text);
+  assert.ok(text.includes("Scope: foreground normal request [recorded]"), text);
+  assert.ok(text.includes("  Eligible requests: 2"), text);
+  assert.ok(text.includes("  Complete provider usage: 1"), text);
+  assert.ok(text.includes("  Excluded provider calls: 1"), text);
+});
+
+test("a canceled tree operation does not suppress the next foreground request", async () => {
+  const ext = createExtension();
+  emit(ext, { type: "session_start", reason: "startup" });
+  emit(ext, { type: "input", text: "hello", source: "interactive" });
+  emit(ext, { type: "before_agent_start", prompt: "hello", systemPrompt: SYSTEM_PROMPT, systemPromptOptions: SYSTEM_OPTIONS });
+  emit(ext, { type: "agent_start" });
+  emit(ext, { type: "context", messages: [{ role: "user", content: [{ type: "text", text: "hello" }], timestamp: 1 }] });
+  emit(ext, { type: "session_before_tree" });
+  emit(ext, { type: "before_provider_request", payload: {} });
+  // The tree navigation is canceled: session_tree never fires.
+  emit(ext, { type: "agent_settled" });
+  emit(ext, { type: "input", text: "hello again", source: "interactive" });
+  emit(ext, { type: "before_agent_start", prompt: "hello again", systemPrompt: SYSTEM_PROMPT, systemPromptOptions: SYSTEM_OPTIONS });
+  emit(ext, { type: "agent_start" });
+  emit(ext, { type: "context", messages: [{ role: "user", content: [{ type: "text", text: "hello again" }], timestamp: 2 }] });
+  emit(ext, { type: "before_provider_request", payload: {} });
+  emit(ext, { type: "message_end", message: assistantMessage() });
+  emit(ext, { type: "agent_settled" });
+  const { log } = await captureLog(() => invokeCommand(ext));
+  const text = log.join("\n");
+  assert.ok(text.includes("Context attribution — latest foreground request #2"), text);
+  assert.ok(text.includes("Scope: foreground normal request [recorded]"), text);
+  assert.ok(text.includes("  Eligible requests: 2"), text);
+  assert.ok(text.includes("  Complete provider usage: 1"), text);
+  assert.ok(text.includes("  Excluded provider calls: 1"), text);
+});
+

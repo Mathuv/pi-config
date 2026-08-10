@@ -593,3 +593,36 @@ test("a small terminal reaches every report line within the overlay height", asy
     assert.ok(bottom.includes(lastLine), `rows=${rows}: the last report line is unreachable`);
   }
 });
+
+test("the overlay height adapts after a terminal resize", async () => {
+  const rpt = report({
+    latest: request({
+      warnings: ["correlation-unavailable"],
+      sources: [sourceRow("system:remainder", "Remainder", 400)],
+    }),
+    providerAttempts: null,
+    aggregate: aggregate({ eligibleRequests: 1, estimatedCharacters: { "system:remainder": 400 } }),
+  });
+  const text = renderReport(rpt);
+  const lastLine = text.split("\n").at(-1)!;
+  let capturedFactory: ((tui: unknown, theme: unknown, keybindings: unknown, done: () => void) => unknown) | undefined;
+  const ui = {
+    custom: async (factory: unknown) => {
+      capturedFactory = factory as typeof capturedFactory;
+      return undefined;
+    },
+  };
+  await showContextAttribution(rpt, { mode: "tui", ui } as unknown as ExtensionContext);
+  const terminal = { rows: 30 };
+  const component = capturedFactory!(terminal, {}, {}, () => {}) as {
+    render(width: number): string[];
+    handleInput(data: string): void;
+  };
+  assert.equal(component.render(80).length, Math.floor(30 * 0.8));
+  terminal.rows = 12; // the terminal resizes while the overlay stays open
+  assert.equal(component.render(80).length, Math.floor(12 * 0.8), "rows=12 height mismatch after resize");
+  for (let i = 0; i < 300; i += 1) component.handleInput("\u001b[B");
+  const bottom = component.render(80);
+  assert.ok(bottom.includes(lastLine), "the last report line is unreachable after a resize");
+});
+

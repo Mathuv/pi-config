@@ -573,3 +573,93 @@ test("agent_settled closes the run origin and a stale pending never poisons the 
   assert.equal(report.aggregate.correlationFailures, 0);
   assert.equal(report.aggregate.eligibleRequests, 2);
 });
+
+test("turn_start records the current turn index on the next request", () => {
+  const ledger = createAttributionLedger();
+  startRun(ledger);
+  ledger.observeTurnStart(0);
+  ledger.observeContext([sourceRow("system:remainder", 100)]);
+  ledger.observeProviderRequest(SAFE_MODEL);
+  ledger.observeMessageEnd(assistantMessage());
+  const report = ledger.snapshot();
+  assert.equal(report.latest?.turnIndex, 0);
+  assert.equal(report.latest?.status, "complete");
+});
+
+test("a request without a turn_start event records an unavailable turn index", () => {
+  const ledger = createAttributionLedger();
+  startRun(ledger);
+  completeRequest(ledger);
+  assert.equal(ledger.snapshot().latest?.turnIndex, null);
+});
+
+test("the turn index updates per tool-loop request", () => {
+  const ledger = createAttributionLedger();
+  startRun(ledger);
+  ledger.observeTurnStart(0);
+  ledger.observeContext([sourceRow("system:remainder", 100)]);
+  ledger.observeProviderRequest(SAFE_MODEL);
+  ledger.observeMessageEnd(assistantMessage({ stopReason: "toolUse" }));
+  ledger.observeTurnStart(1);
+  ledger.observeContext([sourceRow("system:remainder", 200)]);
+  ledger.observeProviderRequest(SAFE_MODEL);
+  ledger.observeMessageEnd(assistantMessage());
+  const report = ledger.snapshot();
+  assert.equal(report.latest?.turnIndex, 1);
+  assert.equal(report.latest?.sequence, 2);
+});
+
+test("a model identifier with URL credentials or an absolute path is sanitized before retention", () => {
+  const ledger = createAttributionLedger();
+  startRun(ledger);
+  ledger.observeContext([sourceRow("system:remainder", 100)]);
+  ledger.observeProviderRequest({
+    provider: "https://user:pass@example.test/provider?q=MODEL_PROVIDER_MARKER#frag",
+    api: "/Users/alice/private/MARKER_DIR/api",
+    model: "gpt-5.6-sol",
+    measurement: "recorded",
+  });
+  ledger.observeMessageEnd(assistantMessage());
+  const serialized = JSON.stringify(ledger.snapshot());
+  for (const marker of ["MODEL_PROVIDER_MARKER", "user:pass", "#frag", "alice", "/Users/alice"]) {
+    assert.ok(!serialized.includes(marker), `the ledger snapshot leaked ${marker}`);
+  }
+});
+
+test("a canceled compaction does not suppress the next idle run", () => {
+  const ledger = createAttributionLedger();
+  startRun(ledger);
+  ledger.observeContext([sourceRow("system:remainder", 100)]);
+  ledger.observeBeforeCompact();
+  ledger.observeProviderRequest(SAFE_MODEL);
+  // The compaction is canceled: observeCompact never fires.
+  ledger.observeAgentSettled();
+  ledger.observeInput("interactive");
+  ledger.observeAgentStart();
+  completeRequest(ledger);
+  const report = ledger.snapshot();
+  assert.equal(report.latest?.status, "complete");
+  assert.equal(report.latest?.correlation, "recorded");
+  assert.equal(report.latest?.sequence, 2);
+  assert.equal(report.aggregate.eligibleRequests, 2);
+  assert.equal(report.aggregate.excludedProviderCalls, 1);
+});
+
+test("a canceled tree operation does not suppress the next idle run", () => {
+  const ledger = createAttributionLedger();
+  startRun(ledger);
+  ledger.observeContext([sourceRow("system:remainder", 100)]);
+  ledger.observeBeforeTree();
+  // The tree navigation is canceled: observeTree never fires.
+  ledger.observeAgentSettled();
+  ledger.observeInput("interactive");
+  ledger.observeAgentStart();
+  completeRequest(ledger);
+  const report = ledger.snapshot();
+  assert.equal(report.latest?.status, "complete");
+  assert.equal(report.latest?.correlation, "recorded");
+  assert.equal(report.latest?.sequence, 2);
+  assert.equal(report.aggregate.eligibleRequests, 2);
+  assert.equal(report.aggregate.excludedProviderCalls, 0);
+});
+
