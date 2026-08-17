@@ -37,11 +37,13 @@ test("uses all models when no scoped model exists", () => {
 });
 
 test("keeps supported thinking levels and clamps unsupported levels", () => {
-	const limited = createModel("limited", { thinkingLevelMap: { off: null, low: "low", high: "high" } });
+	const limited = createModel("limited", {
+		thinkingLevelMap: { off: null, minimal: null, low: "low", medium: null, high: "high", xhigh: null, max: null },
+	});
 	const nonReasoning = createModel("plain", { reasoning: false });
 
 	assert.equal(resolveLevel(limited, "low"), "low");
-	assert.equal(resolveLevel(limited, "medium"), "low");
+	assert.equal(resolveLevel(limited, "medium"), "high");
 	assert.equal(resolveLevel(nonReasoning, "high"), "off");
 });
 
