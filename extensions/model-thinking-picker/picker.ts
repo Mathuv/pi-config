@@ -85,7 +85,12 @@ export class ModelThinkingPicker extends Container {
 
 		this.searchInput.handleInput(data);
 		this.filteredEntries = fuzzyFilter(this.entries, this.searchInput.getValue(), (entry) =>
-			`${entry.model.provider}/${entry.model.id} ${entry.model.name}`,
+			[
+				entry.model.provider,
+				`${entry.model.provider}/${entry.model.id}`,
+				`${entry.model.provider} ${entry.model.id}`,
+				entry.model.name,
+			].join(" "),
 		);
 		this.highlightIndex = 0;
 		const selected = this.selectedEntry();
@@ -114,7 +119,7 @@ export class ModelThinkingPicker extends Container {
 		const selected = this.selectedEntry();
 		const levels = selected ? getSupportedThinkingLevels(selected.model) : ["off"];
 		const level = selected ? this.pendingLevel : "off";
-		const indicator = levels.length === 1 ? this.theme.fg("muted", "off") : this.theme.fg("accent", `◂ ${level} ▸`);
+		const indicator = levels.length === 1 && levels[0] === "off" ? this.theme.fg("muted", "off") : this.theme.fg("accent", `◂ ${level} ▸`);
 		this.thinkingText.setText(`${this.theme.fg("muted", "Thinking: ")}${indicator}`);
 		this.tui.requestRender();
 	}
