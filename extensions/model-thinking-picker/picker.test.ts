@@ -240,6 +240,49 @@ test("the list uses Pi's ten-row scroll window and counter", () => {
 	assert.doesNotMatch(filtered, /model-000/);
 });
 
+test("the picker forwards focus to the search input", () => {
+	const { picker } = createPicker(entries());
+	const focusable = picker as unknown as { focused: boolean; searchInput: { focused: boolean } };
+
+	assert.equal(focusable.focused, false);
+	focusable.focused = true;
+	assert.equal(focusable.searchInput.focused, true);
+	focusable.focused = false;
+	assert.equal(focusable.searchInput.focused, false);
+});
+
+test("the window boundaries and empty result counter match Pi", () => {
+	for (const { count, moves, expectedRows, counter } of [
+		{ count: 10, moves: 0, expectedRows: 10, counter: undefined },
+		{ count: 11, moves: 0, expectedRows: 10, counter: "(1/11)" },
+		{ count: 11, moves: 10, expectedRows: 10, counter: "(11/11)" },
+		{ count: 11, moves: 11, expectedRows: 10, counter: "(1/11)" },
+	]) {
+		const models = Array.from({ length: count }, (_, index) => ({
+			model: createModel(`boundary-${String(index).padStart(2, "0")}`),
+			isCurrent: index === 0,
+		}));
+		const { picker } = createPicker(models);
+		for (let index = 0; index < moves; index += 1) picker.handleInput("tui.select.down");
+		const rendered = picker.render(80).join("\n");
+
+		assert.equal((rendered.match(/boundary-\d+ \[test\]/g) ?? []).length, expectedRows);
+		if (counter) assert.ok(rendered.includes(counter));
+		else assert.doesNotMatch(rendered, /\(\d+\/\d+\)/);
+	}
+
+	const { picker } = createPicker(entries());
+	picker.handleInput("zzz");
+	assert.doesNotMatch(picker.render(80).join("\n"), /\(\d+\/0\)/);
+});
+
+test("an unselected current model keeps its success check", () => {
+	const { picker } = createPicker(entries());
+	picker.handleInput("tui.select.down");
+
+	assert.match(picker.render(80).join("\n"), /  beta \[test\] ✓/);
+});
+
 test("a highlight move carries a level over, then clamps it for the next model", () => {
 	const highOnly = createModel("high-only", {
 		thinkingLevelMap: { off: null, minimal: null, low: null, medium: null, high: "high", xhigh: null, max: null },
