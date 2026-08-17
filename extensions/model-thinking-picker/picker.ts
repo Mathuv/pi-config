@@ -34,7 +34,8 @@ export class ModelThinkingPicker extends Container {
 		super();
 		this.filteredEntries = entries;
 		this.highlightIndex = Math.max(0, entries.findIndex((entry) => entry.isCurrent));
-		this.pendingLevel = currentLevel;
+		const selected = this.selectedEntry();
+		this.pendingLevel = selected ? resolveLevel(selected.model, currentLevel) : currentLevel;
 
 		this.addChild(new DynamicBorder((text) => this.theme.fg("borderMuted", text)));
 		this.addChild(new Text(this.theme.fg("accent", "Select model"), 0, 0));
