@@ -84,6 +84,20 @@ test("typing filters the list, resets the highlight, and renders no matches", ()
 	assert.match(empty, /no matches/);
 });
 
+test("typing preserves the built-in model search order", () => {
+	const openRouter = createModel("gpt-5", { provider: "openrouter" });
+	const openAI = createModel("openai/gpt-5", { provider: "openai" });
+	const { picker } = createPicker([
+		{ model: openRouter, isCurrent: false },
+		{ model: openAI, isCurrent: true },
+	]);
+
+	picker.handleInput("gpt");
+	const rendered = picker.render(80).join("\n");
+
+	assert.ok(rendered.indexOf("[openai] openai/gpt-5") < rendered.indexOf("[openrouter] gpt-5"));
+});
+
 test("typing clamps the pending level for the first filtered model", () => {
 	const models = entries();
 	const { picker, results } = createPicker(models);
@@ -137,6 +151,17 @@ test("Left and Right ignore a model that supports only off", () => {
 
 	assert.deepEqual(results, [{ model: plain, level: "off" }]);
 	assert.doesNotMatch(picker.render(80).join("\n"), /◂|▸/);
+});
+
+test("a singleton non-off level renders its pending level", () => {
+	const highOnly = createModel("high-only", {
+		thinkingLevelMap: { off: null, minimal: null, low: null, medium: null, high: "high", xhigh: null, max: null },
+	});
+	const { picker } = createPicker([{ model: highOnly, isCurrent: true }], "high");
+
+	const rendered = picker.render(80).join("\n");
+
+	assert.match(rendered, /Thinking: ◂ high ▸/);
 });
 
 test("a highlight move carries a level over, then clamps it for the next model", () => {
