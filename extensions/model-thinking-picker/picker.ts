@@ -2,7 +2,7 @@ import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
 import type { Api, Model, ModelThinkingLevel } from "@earendil-works/pi-ai";
 import { DynamicBorder } from "@earendil-works/pi-coding-agent";
 import { Container, fuzzyFilter, Input, Key, matchesKey, Spacer, Text } from "@earendil-works/pi-tui";
-import type { TUI } from "@earendil-works/pi-tui";
+import type { Focusable, TUI } from "@earendil-works/pi-tui";
 import { resolveLevel, type ModelEntry } from "./models.ts";
 
 export type PickerResult = { model: Model<Api>; level: ModelThinkingLevel } | null;
@@ -17,8 +17,16 @@ interface KeybindingsLike {
 	matches(data: string, action: string): boolean;
 }
 
-export class ModelThinkingPicker extends Container {
+export class ModelThinkingPicker extends Container implements Focusable {
 	private readonly searchInput = new Input();
+
+	get focused(): boolean {
+		return this.searchInput.focused;
+	}
+
+	set focused(value: boolean) {
+		this.searchInput.focused = value;
+	}
 	private readonly listContainer = new Container();
 	private readonly thinkingText = new Text();
 	private filteredEntries: ModelEntry[];

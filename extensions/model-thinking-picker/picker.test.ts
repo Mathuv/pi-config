@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Api, Model, ModelThinkingLevel } from "@earendil-works/pi-ai";
+import { isFocusable } from "@earendil-works/pi-tui";
 import { ModelThinkingPicker, type PickerResult } from "./picker.ts";
 import { buildModelList, type ModelEntry } from "./models.ts";
 
@@ -244,6 +245,7 @@ test("the picker forwards focus to the search input", () => {
 	const { picker } = createPicker(entries());
 	const focusable = picker as unknown as { focused: boolean; searchInput: { focused: boolean } };
 
+	assert.equal(isFocusable(picker), true);
 	assert.equal(focusable.focused, false);
 	focusable.focused = true;
 	assert.equal(focusable.searchInput.focused, true);

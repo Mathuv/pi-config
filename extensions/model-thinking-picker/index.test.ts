@@ -22,23 +22,6 @@ function createExtension(setModelResult: boolean = true) {
 	return { handlers, levels };
 }
 
-function createContext(model: Model<Api>, result: unknown, customCalls: { value: number }, notifications: string[]) {
-	return {
-		mode: "tui",
-		hasUI: true,
-		model,
-		scopedModels: [{ model }],
-		modelRegistry: { getAvailable: () => [model] },
-		ui: {
-			custom: async () => {
-				customCalls.value += 1;
-				return result;
-			},
-			notify: (message: string) => notifications.push(message),
-		},
-	};
-}
-
 test("the picker registers the primary and fallback shortcuts", () => {
 	const { handlers } = createExtension();
 
