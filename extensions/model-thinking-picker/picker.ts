@@ -7,6 +7,8 @@ import { resolveLevel, type ModelEntry } from "./models.ts";
 
 export type PickerResult = { model: Model<Api>; level: ModelThinkingLevel } | null;
 
+const MAX_VISIBLE = 10;
+
 interface ThemeLike {
 	fg(color: string, text: string): string;
 }
@@ -108,12 +110,21 @@ export class ModelThinkingPicker extends Container {
 		if (this.filteredEntries.length === 0) {
 			this.listContainer.addChild(new Text(this.theme.fg("muted", "  no matches"), 0, 0));
 		} else {
-			for (const [index, entry] of this.filteredEntries.entries()) {
+			const startIndex = Math.max(
+				0,
+				Math.min(this.highlightIndex - Math.floor(MAX_VISIBLE / 2), this.filteredEntries.length - MAX_VISIBLE),
+			);
+			const endIndex = Math.min(startIndex + MAX_VISIBLE, this.filteredEntries.length);
+			for (let index = startIndex; index < endIndex; index++) {
+				const entry = this.filteredEntries[index]!;
 				const prefix = index === this.highlightIndex ? "→ " : "  ";
 				const label = `[${entry.model.provider}] ${entry.model.id}`;
 				const model = index === this.highlightIndex ? this.theme.fg("accent", label) : label;
 				const current = entry.isCurrent ? this.theme.fg("success", " ✓") : "";
 				this.listContainer.addChild(new Text(`${prefix}${model}${current}`, 0, 0));
+			}
+			if (startIndex > 0 || endIndex < this.filteredEntries.length) {
+				this.listContainer.addChild(new Text(this.theme.fg("muted", `  (${this.highlightIndex + 1}/${this.filteredEntries.length})`), 0, 0));
 			}
 		}
 

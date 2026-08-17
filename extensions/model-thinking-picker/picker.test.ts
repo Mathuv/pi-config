@@ -215,7 +215,7 @@ test("the list uses Pi's ten-row scroll window and counter", () => {
 	picker.handleInput("model-5");
 	const filtered = picker.render(80).join("\n");
 	assert.match(filtered, /→ \[test\] model-500/);
-	assert.match(filtered, /\(1\/20\)/);
+	assert.match(filtered, /\(1\/115\)/);
 	assert.doesNotMatch(filtered, /model-000/);
 });
 

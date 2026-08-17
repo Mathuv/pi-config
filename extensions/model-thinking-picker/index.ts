@@ -1,7 +1,7 @@
 // Model Thinking Picker.
-// alt+o (fallback ctrl+shift+o) opens a model and thinking-level picker.
-// Default macOS Terminal.app sends "ø" for Option+O.
-// Use ctrl+shift+o there, or enable Option-as-Meta.
+// alt+p (fallback ctrl+shift+p) opens a model and thinking-level picker.
+// Default macOS Terminal.app sends "π" for Option+P.
+// Use ctrl+shift+p there, or enable Option-as-Meta.
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import * as os from "node:os";
@@ -44,11 +44,11 @@ export default function activate(pi: ExtensionAPI): void {
 		}
 	};
 
-	pi.registerShortcut("alt+o", {
+	pi.registerShortcut("alt+p", {
 		description: "Open the model and thinking picker",
 		handler: open,
 	});
-	pi.registerShortcut("ctrl+shift+o", {
+	pi.registerShortcut("ctrl+shift+p", {
 		description: "Open the model and thinking picker (fallback)",
 		handler: open,
 	});
