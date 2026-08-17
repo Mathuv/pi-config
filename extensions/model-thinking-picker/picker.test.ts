@@ -84,6 +84,16 @@ test("typing filters the list, resets the highlight, and renders no matches", ()
 	assert.match(empty, /no matches/);
 });
 
+test("typing clamps the pending level for the first filtered model", () => {
+	const models = entries();
+	const { picker, results } = createPicker(models);
+
+	picker.handleInput("plain");
+	picker.handleInput("tui.select.confirm");
+
+	assert.deepEqual(results, [{ model: models[2]!.model, level: "off" }]);
+});
+
 test("Up and Down wrap through filtered models", () => {
 	const models = entries();
 	const { picker, results } = createPicker(models);
