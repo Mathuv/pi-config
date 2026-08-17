@@ -1,0 +1,8 @@
+{
+	"name": "model-thinking-picker",
+	"private": true,
+	"type": "module",
+	"devDependencies": {
+		"@earendil-works/pi-coding-agent": "0.84.2"
+	}
+}
