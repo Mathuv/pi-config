@@ -89,6 +89,7 @@ test("Up and Down wrap through filtered models", () => {
 	const { picker, results } = createPicker(models);
 
 	picker.handleInput("tui.select.up");
+	picker.handleInput("tui.select.up");
 	picker.handleInput("tui.select.confirm");
 	picker.handleInput("tui.select.down");
 	picker.handleInput("tui.select.confirm");
