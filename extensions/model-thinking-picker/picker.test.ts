@@ -191,6 +191,34 @@ test("a singleton non-off level renders its pending level", () => {
 	assert.match(rendered, /Thinking: ◂ high ▸/);
 });
 
+test("the list uses Pi's ten-row scroll window and counter", () => {
+	const entries = Array.from({ length: 520 }, (_, index) => ({
+		model: createModel(`model-${String(index).padStart(3, "0")}`),
+		isCurrent: index === 0,
+	}));
+	const { picker } = createPicker(entries);
+
+	const initial = picker.render(80).join("\n");
+	assert.equal((initial.match(/\[test\] model-/g) ?? []).length, 10);
+	assert.match(initial, /→ \[test\] model-000/);
+	assert.match(initial, /\(1\/520\)/);
+	assert.doesNotMatch(initial, /model-010/);
+
+	for (let index = 0; index < 6; index++) picker.handleInput("tui.select.down");
+	const scrolled = picker.render(80).join("\n");
+	assert.match(scrolled, /  \[test\] model-001/);
+	assert.match(scrolled, /→ \[test\] model-006/);
+	assert.match(scrolled, /  \[test\] model-010/);
+	assert.match(scrolled, /\(7\/520\)/);
+	assert.doesNotMatch(scrolled, /model-000|model-011/);
+
+	picker.handleInput("model-5");
+	const filtered = picker.render(80).join("\n");
+	assert.match(filtered, /→ \[test\] model-500/);
+	assert.match(filtered, /\(1\/20\)/);
+	assert.doesNotMatch(filtered, /model-000/);
+});
+
 test("a highlight move carries a level over, then clamps it for the next model", () => {
 	const highOnly = createModel("high-only", {
 		thinkingLevelMap: { off: null, minimal: null, low: null, medium: null, high: "high", xhigh: null, max: null },
