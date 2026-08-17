@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Api, Model, ModelThinkingLevel } from "@earendil-works/pi-ai";
 import { ModelThinkingPicker, type PickerResult } from "./picker.ts";
-import type { ModelEntry } from "./models.ts";
+import { buildModelList, type ModelEntry } from "./models.ts";
 
 function createModel(id: string, options: Partial<Model<Api>> = {}): Model<Api> {
 	return {
@@ -96,6 +96,21 @@ test("typing preserves the built-in model search order", () => {
 	const rendered = picker.render(80).join("\n");
 
 	assert.ok(rendered.indexOf("[openai] openai/gpt-5") < rendered.indexOf("[openrouter] gpt-5"));
+});
+
+test("typing keeps the built-in current-first provider order for equal fuzzy scores", () => {
+	const zebra = createModel("foo", { provider: "zebra" });
+	const alpha = createModel("foo", { provider: "alpha" });
+	const current = createModel("foo", { provider: "kappa" });
+	const { picker } = createPicker(
+		buildModelList([], [zebra, alpha, current], current),
+	);
+
+	picker.handleInput("foo");
+	const rendered = picker.render(80).join("\n");
+
+	assert.ok(rendered.indexOf("[kappa] foo") < rendered.indexOf("[alpha] foo"));
+	assert.ok(rendered.indexOf("[alpha] foo") < rendered.indexOf("[zebra] foo"));
 });
 
 test("typing clamps the pending level for the first filtered model", () => {
