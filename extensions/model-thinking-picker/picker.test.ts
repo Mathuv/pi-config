@@ -105,9 +105,9 @@ test("Left and Right cycle only supported thinking levels", () => {
 	});
 	const { picker, results } = createPicker([{ model, isCurrent: true }], "medium");
 
-	picker.handleInput("ArrowRight");
+	picker.handleInput("\u001b[C");
 	picker.handleInput("tui.select.confirm");
-	picker.handleInput("ArrowLeft");
+	picker.handleInput("\u001b[D");
 	picker.handleInput("tui.select.confirm");
 
 	assert.deepEqual(results, [
@@ -120,8 +120,8 @@ test("Left and Right ignore a model that supports only off", () => {
 	const plain = createModel("plain", { reasoning: false });
 	const { picker, results } = createPicker([{ model: plain, isCurrent: true }], "off");
 
-	picker.handleInput("ArrowRight");
-	picker.handleInput("ArrowLeft");
+	picker.handleInput("\u001b[C");
+	picker.handleInput("\u001b[D");
 	picker.handleInput("tui.select.confirm");
 
 	assert.deepEqual(results, [{ model: plain, level: "off" }]);
