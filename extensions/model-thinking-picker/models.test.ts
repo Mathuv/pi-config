@@ -2,11 +2,15 @@ import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+import { once } from "node:events";
+import { spawn } from "node:child_process";
 import { test } from "node:test";
-import type { Model } from "@earendil-works/pi-ai";
+import lockfile from "proper-lockfile";
+import type { Api, Model } from "@earendil-works/pi-ai";
 import { buildModelList, resolveLevel, writeDefaults } from "./models.ts";
 
-function createModel(id: string, options: Partial<Model> = {}): Model {
+function createModel(id: string, options: Partial<Model<Api>> = {}): Model<Api> {
 	return {
 		id,
 		name: id,
@@ -64,6 +68,33 @@ test("updates only the model defaults", () => {
 		});
 		assert.match(readFileSync(settingsPath, "utf8"), /^\{\n\t/);
 	} finally {
+		rmSync(directory, { recursive: true, force: true });
+	}
+});
+
+test("does not write settings while Pi holds the settings lock", async () => {
+	const directory = mkdtempSync(join(tmpdir(), "model-thinking-picker-"));
+	const settingsPath = join(directory, "settings.json");
+	const model = createModel("next", { provider: "next-provider" });
+	writeFileSync(settingsPath, '{\n\t"defaultModel": "old"\n}\n');
+	const release = lockfile.lockSync(settingsPath, { realpath: false });
+	const script = [
+		`import { writeDefaults } from ${JSON.stringify(pathToFileURL(join(process.cwd(), "models.ts")).href)};`,
+		`process.send?.("ready");`,
+		`writeDefaults(${JSON.stringify(model)}, "high", ${JSON.stringify(settingsPath)});`,
+	].join("\n");
+	const writer = spawn(process.execPath, ["--eval", script], { cwd: process.cwd(), stdio: ["ignore", "ignore", "ignore", "ipc"] });
+	const ready = once(writer, "message");
+
+	try {
+		await ready;
+		await new Promise((resolve) => setTimeout(resolve, 50));
+		assert.equal(JSON.parse(readFileSync(settingsPath, "utf8")).defaultModel, "old");
+	} finally {
+		release();
+		await new Promise((resolve) => setTimeout(resolve, 300));
+		assert.equal(JSON.parse(readFileSync(settingsPath, "utf8")).defaultModel, "next");
+		writer.kill();
 		rmSync(directory, { recursive: true, force: true });
 	}
 });
