@@ -117,15 +117,19 @@ export class ModelThinkingPicker extends Container {
 			const endIndex = Math.min(startIndex + MAX_VISIBLE, this.filteredEntries.length);
 			for (let index = startIndex; index < endIndex; index++) {
 				const entry = this.filteredEntries[index]!;
-				const prefix = index === this.highlightIndex ? "→ " : "  ";
-				const label = `[${entry.model.provider}] ${entry.model.id}`;
-				const model = index === this.highlightIndex ? this.theme.fg("accent", label) : label;
+				const isSelected = index === this.highlightIndex;
+				const prefix = isSelected ? this.theme.fg("accent", "→ ") : "  ";
+				const model = isSelected ? this.theme.fg("accent", entry.model.id) : entry.model.id;
+				const provider = this.theme.fg("muted", `[${entry.model.provider}]`);
 				const current = entry.isCurrent ? this.theme.fg("success", " ✓") : "";
-				this.listContainer.addChild(new Text(`${prefix}${model}${current}`, 0, 0));
+				this.listContainer.addChild(new Text(`${prefix}${model} ${provider}${current}`, 0, 0));
 			}
 			if (startIndex > 0 || endIndex < this.filteredEntries.length) {
 				this.listContainer.addChild(new Text(this.theme.fg("muted", `  (${this.highlightIndex + 1}/${this.filteredEntries.length})`), 0, 0));
 			}
+			const selected = this.selectedEntry()!;
+			this.listContainer.addChild(new Spacer(1));
+			this.listContainer.addChild(new Text(this.theme.fg("muted", `  Model Name: ${selected.model.name}`), 0, 0));
 		}
 
 		const selected = this.selectedEntry();

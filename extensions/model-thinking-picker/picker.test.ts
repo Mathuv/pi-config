@@ -60,7 +60,7 @@ test("the list matches Pi's model row format and detail line", () => {
 		() => {},
 	);
 
-	const rendered = picker.render(80).join("\n");
+	const rendered = picker.render(200).join("\n");
 
 	assert.match(rendered, /  alpha <muted>\[test\]<\/muted>/);
 	assert.match(rendered, /<accent>→ <\/accent><accent>beta<\/accent> <muted>\[test\]<\/muted><success> ✓<\/success>/);
@@ -112,8 +112,8 @@ test("typing filters the list, resets the highlight, and renders no matches", ()
 	picker.handleInput("zzz");
 	const empty = picker.render(80).join("\n");
 
-	assert.match(filtered, /→ \[test\] alpha/);
-	assert.doesNotMatch(filtered, /\[test\] beta/);
+	assert.match(filtered, /→ alpha \[test\]/);
+	assert.doesNotMatch(filtered, /beta \[test\]/);
 	assert.match(empty, /no matches/);
 });
 
@@ -128,7 +128,7 @@ test("typing preserves the built-in model search order", () => {
 	picker.handleInput("gpt");
 	const rendered = picker.render(80).join("\n");
 
-	assert.ok(rendered.indexOf("[openai] openai/gpt-5") < rendered.indexOf("[openrouter] gpt-5"));
+	assert.ok(rendered.indexOf("openai/gpt-5 [openai]") < rendered.indexOf("gpt-5 [openrouter]"));
 });
 
 test("typing keeps the built-in current-first provider order for equal fuzzy scores", () => {
@@ -142,8 +142,8 @@ test("typing keeps the built-in current-first provider order for equal fuzzy sco
 	picker.handleInput("foo");
 	const rendered = picker.render(80).join("\n");
 
-	assert.ok(rendered.indexOf("[kappa] foo") < rendered.indexOf("[alpha] foo"));
-	assert.ok(rendered.indexOf("[alpha] foo") < rendered.indexOf("[zebra] foo"));
+	assert.ok(rendered.indexOf("foo [kappa]") < rendered.indexOf("foo [alpha]"));
+	assert.ok(rendered.indexOf("foo [alpha]") < rendered.indexOf("foo [zebra]"));
 });
 
 test("typing clamps the pending level for the first filtered model", () => {
@@ -220,22 +220,22 @@ test("the list uses Pi's ten-row scroll window and counter", () => {
 	const { picker } = createPicker(entries);
 
 	const initial = picker.render(80).join("\n");
-	assert.equal((initial.match(/\[test\] model-/g) ?? []).length, 10);
-	assert.match(initial, /→ \[test\] model-000/);
+	assert.equal((initial.match(/model-\d+ \[test\]/g) ?? []).length, 10);
+	assert.match(initial, /→ model-000 \[test\]/);
 	assert.match(initial, /\(1\/520\)/);
 	assert.doesNotMatch(initial, /model-010/);
 
 	for (let index = 0; index < 6; index++) picker.handleInput("tui.select.down");
 	const scrolled = picker.render(80).join("\n");
-	assert.match(scrolled, /  \[test\] model-001/);
-	assert.match(scrolled, /→ \[test\] model-006/);
-	assert.match(scrolled, /  \[test\] model-010/);
+	assert.match(scrolled, /  model-001 \[test\]/);
+	assert.match(scrolled, /→ model-006 \[test\]/);
+	assert.match(scrolled, /  model-010 \[test\]/);
 	assert.match(scrolled, /\(7\/520\)/);
 	assert.doesNotMatch(scrolled, /model-000|model-011/);
 
 	picker.handleInput("model-5");
 	const filtered = picker.render(80).join("\n");
-	assert.match(filtered, /→ \[test\] model-500/);
+	assert.match(filtered, /→ model-500 \[test\]/);
 	assert.match(filtered, /\(1\/115\)/);
 	assert.doesNotMatch(filtered, /model-000/);
 });
