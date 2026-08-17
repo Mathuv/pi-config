@@ -13,7 +13,16 @@ export function buildModelList(
 	allModels: readonly Model<Api>[],
 	currentModel: Model<Api> | undefined,
 ): ModelEntry[] {
-	const source = scopedModels.length > 0 ? scopedModels : allModels;
+	const source =
+		scopedModels.length > 0
+			? scopedModels
+			: [...allModels].sort((a, b) => {
+				const aIsCurrent = currentModel !== undefined && modelsAreEqual(currentModel, a);
+				const bIsCurrent = currentModel !== undefined && modelsAreEqual(currentModel, b);
+				if (aIsCurrent && !bIsCurrent) return -1;
+				if (!aIsCurrent && bIsCurrent) return 1;
+				return a.provider.localeCompare(b.provider);
+			});
 	return source.map((model) => ({
 		model,
 		isCurrent: currentModel !== undefined && modelsAreEqual(model, currentModel),
