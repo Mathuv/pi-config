@@ -88,6 +88,8 @@ export class ModelThinkingPicker extends Container {
 			`${entry.model.provider}/${entry.model.id} ${entry.model.name}`,
 		);
 		this.highlightIndex = 0;
+		const selected = this.selectedEntry();
+		if (selected) this.pendingLevel = resolveLevel(selected.model, this.pendingLevel);
 		this.updateContent();
 	}
 
