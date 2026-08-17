@@ -62,6 +62,18 @@ test("Enter resolves the highlighted model and pending level", () => {
 	assert.deepEqual(results, [{ model: entries()[1]!.model, level: "medium" }]);
 });
 
+test("the initial selection clamps an unsupported session level", () => {
+	const plain = createModel("plain", { reasoning: false });
+	const active = createModel("active");
+	const entries = buildModelList([plain], [], active);
+	const { picker, results } = createPicker(entries, "high");
+
+	assert.match(picker.render(80).join("\n"), /Thinking: off/);
+	picker.handleInput("tui.select.confirm");
+
+	assert.deepEqual(results, [{ model: plain, level: "off" }]);
+});
+
 test("Enter does nothing when the filter has no matches", () => {
 	const { picker, results } = createPicker(entries());
 	picker.handleInput("zzz");
