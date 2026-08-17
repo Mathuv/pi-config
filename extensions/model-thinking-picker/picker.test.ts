@@ -46,6 +46,27 @@ function entries(): ModelEntry[] {
 	];
 }
 
+test("the list matches Pi's model row format and detail line", () => {
+	const styledTheme = {
+		fg: (color: string, text: string) => `<${color}>${text}</${color}>`,
+	};
+	const tui = { requestRender() {} };
+	const picker = new ModelThinkingPicker(
+		tui as never,
+		entries(),
+		"medium",
+		styledTheme,
+		{ matches: () => false },
+		() => {},
+	);
+
+	const rendered = picker.render(80).join("\n");
+
+	assert.match(rendered, /  alpha <muted>\[test\]<\/muted>/);
+	assert.match(rendered, /<accent>→ <\/accent><accent>beta<\/accent> <muted>\[test\]<\/muted><success> ✓<\/success>/);
+	assert.match(rendered, /<muted>  Model Name: beta<\/muted>/);
+});
+
 test("Escape cancels the picker", () => {
 	const { picker, results } = createPicker(entries());
 
