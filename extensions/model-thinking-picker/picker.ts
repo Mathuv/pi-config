@@ -1,7 +1,7 @@
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
 import type { Api, Model, ModelThinkingLevel } from "@earendil-works/pi-ai";
 import { DynamicBorder } from "@earendil-works/pi-coding-agent";
-import { Container, fuzzyFilter, Input, Spacer, Text } from "@earendil-works/pi-tui";
+import { Container, fuzzyFilter, Input, Key, matchesKey, Spacer, Text } from "@earendil-works/pi-tui";
 import type { TUI } from "@earendil-works/pi-tui";
 import { resolveLevel, type ModelEntry } from "./models.ts";
 
@@ -71,13 +71,13 @@ export class ModelThinkingPicker extends Container {
 			return;
 		}
 
-		if (data === "\u001b[D" || data === "\u001b[C") {
+		if (matchesKey(data, Key.left) || matchesKey(data, Key.right)) {
 			const selected = this.selectedEntry();
 			if (!selected) return;
 			const levels = getSupportedThinkingLevels(selected.model);
 			if (levels.length === 1) return;
 			const index = levels.indexOf(this.pendingLevel);
-			const direction = data === "\u001b[D" ? -1 : 1;
+			const direction = matchesKey(data, Key.left) ? -1 : 1;
 			this.pendingLevel = levels[(index + direction + levels.length) % levels.length]!;
 			this.updateContent();
 			return;
