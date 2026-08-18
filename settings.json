@@ -29,7 +29,8 @@
       ]
     },
     "git:github.com/Mathuv/pi-help",
-    "git:github.com/Mathuv/pi-interactive-subagents"
+    "git:github.com/Mathuv/pi-interactive-subagents",
+    "../../devel/my-pi-extensions/pi-model-thinking-picker"
   ],
   "hideThinkingBlock": false,
   "extensions": [
