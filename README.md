@@ -203,6 +203,7 @@ Loaded on-demand when the context matches.
 | **cmux/** | cmux integration — notifications, sidebar, workspace tools |
 | **cost/** | `/cost` command — API cost summary |
 | **execute-command/** | `execute_command` tool — lets the agent self-invoke slash commands |
+| **commit/** | `/commit-staged` and `/commit-all` — generate a Conventional Commit message from staged diff, require editable review, then commit |
 | **todos/** | `/todos` command + `todo` tool — file-based todo management |
 | **uv.ts** | uv-first Python guardrail for the `bash` tool — prepends command shims, routes bare `python` / `python3` through `uv run`, and blocks `pip`, `pip3`, and `poetry`. Benefit: keeps agent Python usage portable and consistent across Pi sessions instead of depending on shell-local setup. |
 
@@ -214,8 +215,12 @@ Loaded on-demand when the context matches.
 | `/subagent <agent> <task>` | Spawn a subagent (e.g., `/subagent scout analyze the auth module`) |
 | `/iterate [task]` | Fork session into interactive subagent for quick fixes |
 | `/answer` | Extract questions into interactive Q&A |
+| `/commit-staged [guidance]` | Generate a message from the current staged diff, let you edit it, then commit only the staged index |
+| `/commit-all [guidance]` | Run `git add -A`, generate/edit a message from the resulting staged diff, then commit |
 | `/todos` | Visual todo manager |
 | `/cost` | API cost summary |
+
+`/commit-staged` and `/commit-all` read the runtime policy from `~/.pi/agent/skills/commit/SKILL.md`. Arguments are message guidance only, not file selectors. Cancelling the editor aborts the commit; `/commit-all` keeps the `git add -A` staging intact. Neither command pushes, signs off, or adds breaking-change footers.
 
 ## Packages
 
