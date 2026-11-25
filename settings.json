@@ -1,4 +1,5 @@
 {
+  "memory": { "perTurnInjection": false },
   "lastChangelogVersion": "1.0.4",
   "defaultProvider": "openai-codex",
   "defaultModel": "gpt-6-luna",
